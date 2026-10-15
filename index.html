@@ -1,0 +1,1254 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A browser 3D house full of wobbly ceiling fans and electric fans, inspired by Roblox fan games. Built with Three.js.">
+<title>ぐらつきファンの部屋</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* Layout: full-bleed 3D house, floating control panel (bottom sheet on phones), mode toolbar top-right. Single dark evening look by choice. */
+:root{
+  --room:#231e1b;
+  --panel:rgba(31,25,21,.9);
+  --ink:#f3e9db;
+  --dim:#bba993;
+  --line:rgba(243,233,219,.15);
+  --brass:#d9a35b;
+  --warn:#e8735a;
+  --calm:#8cc7b5;
+  --f-ui:"Zen Kaku Gothic New",system-ui,"Hiragino Sans","Yu Gothic",sans-serif;
+  --f-num:"DotGothic16","Zen Kaku Gothic New",ui-monospace,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%;margin:0}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{background:var(--room);color:var(--ink);font-family:var(--f-ui);overflow:hidden}
+#app{position:relative;height:100%;overflow:hidden}
+#c{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#c.hand{cursor:pointer}
+#c.walk{cursor:crosshair}
+#panel{position:absolute;top:16px;left:16px;z-index:5;width:min(320px,calc(100% - 32px));max-height:calc(100% - 32px);overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);display:flex;flex-direction:column;gap:12px}
+.ph{display:flex;align-items:flex-start;gap:10px}
+.ph>div{flex:1;min-width:0}
+.eyebrow{font-family:var(--f-num);font-size:11px;letter-spacing:.1em;color:var(--brass)}
+h1{margin:2px 0 0;font-size:18px;font-weight:700;line-height:1.3;text-wrap:balance}
+#pbody{display:flex;flex-direction:column;gap:12px}
+.hint{margin:0;font-size:12px;line-height:1.6;color:var(--dim)}
+.dev{display:grid;gap:7px;padding-top:11px;border-top:1px solid var(--line)}
+.dh{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dh b{flex:1;min-width:0;font-size:13.5px}
+.chip{font-family:var(--f-num);font-size:12px;padding:1px 9px;border-radius:999px;border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.chip.on{background:var(--brass);border-color:transparent;color:#21170e}
+.chip.warn{background:var(--warn);border-color:transparent;color:#21170e}
+.read{font-family:var(--f-num);font-size:13px;color:var(--dim);font-variant-numeric:tabular-nums}
+.read span{color:var(--ink)}
+.read em{font-style:normal}
+.bar{position:relative;height:6px;background:rgba(243,233,219,.1);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--calm);transition:background-color .3s}
+.bar i.hot{background:var(--warn)}
+.bar.line::after{content:"";position:absolute;left:var(--line-at,66.7%);top:0;bottom:0;width:2px;background:var(--warn)}
+label{font-size:12.5px;color:var(--dim);display:flex;justify-content:space-between}
+output{font-family:var(--f-num);color:var(--ink)}
+input[type=range]{width:100%;margin:0;accent-color:var(--brass)}
+.note{margin:0;font-size:11.5px;line-height:1.6;color:var(--dim)}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+button{font:inherit;font-size:12.5px;color:var(--ink);background:rgba(243,233,219,.07);border:1px solid var(--line);border-radius:6px;padding:5px 9px;cursor:pointer}
+button:hover{background:rgba(243,233,219,.15)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+button.on{border-color:var(--brass);color:var(--brass)}
+button.look{color:var(--dim)}
+button:disabled{opacity:.4;cursor:default}
+#fold{flex:none}
+.tabs{display:flex;flex-wrap:wrap;gap:4px}
+.tab{font-size:12px;padding:4px 9px;display:inline-flex;align-items:center;gap:5px}
+.tab::before{content:"";width:6px;height:6px;border-radius:50%;background:rgba(243,233,219,.2)}
+.tab.run::before{background:var(--calm)}
+.tab.down::before{background:var(--warn)}
+.tab[aria-pressed="true"]{background:var(--brass);border-color:transparent;color:#21170e}
+.tab[aria-pressed="true"]::before{background:#21170e}
+#toolbar{position:absolute;top:16px;right:16px;z-index:5;display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 32px);
+  background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:4px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+#toolbar .chip{margin:0 4px}
+#toolbar button{padding:5px 10px}
+#tip{position:absolute;left:0;top:0;z-index:6;pointer-events:none;background:rgba(18,14,12,.93);color:var(--ink);font-size:12.5px;
+  padding:5px 9px;border-radius:6px;border:1px solid var(--line);white-space:nowrap;transform:translate(14px,14px)}
+#toast{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:6;max-width:min(460px,calc(100% - 32px));background:var(--warn);color:#21170e;
+  font-weight:700;font-size:13px;padding:7px 14px;border-radius:8px;text-align:center;pointer-events:none}
+#toast.info{background:var(--panel);color:var(--ink);border:1px solid var(--line);font-weight:400}
+#joy{position:absolute;left:24px;bottom:96px;z-index:5;width:112px;height:112px;border-radius:50%;background:rgba(31,25,21,.45);border:1px solid var(--line);touch-action:none}
+#jk{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(243,233,219,.35);border:1px solid var(--line)}
+#bars,#fade{position:absolute;inset:0;pointer-events:none;z-index:3}
+#bars i{position:absolute;left:0;right:0;height:9%;background:#000}
+#bars i:first-child{top:0}
+#bars i:last-child{bottom:0}
+#fade{background:#000;opacity:0}
+#cap{position:absolute;left:24px;bottom:calc(9% + 16px);z-index:4;color:#fff;font-family:var(--f-num);text-shadow:0 1px 4px rgba(0,0,0,.85);pointer-events:none}
+#cap b{display:block;font-size:22px;font-weight:400;letter-spacing:.04em}
+#cap span{font-size:13px;opacity:.88}
+#filmhint{position:absolute;top:calc(9% + 12px);right:16px;z-index:4;color:#fff;font-size:12px;background:rgba(0,0,0,.45);padding:4px 10px;border-radius:6px;pointer-events:none}
+body.filming #panel,body.filming #toolbar,body.filming #tip,body.filming #joy,body.filming #toast{display:none!important}
+.seg{display:none}
+@media (max-width:640px),(max-height:500px){
+  #panel{top:auto;bottom:16px;left:50%;transform:translateX(-50%);width:min(380px,calc(100% - 32px));max-height:38%;padding:8px 10px;gap:6px;border-radius:9px}
+  #pbody{gap:7px}
+  .eyebrow,.hint,.note,.line-label{display:none}
+  .ph{align-items:center}
+  h1{font-size:14px;margin:0}
+  #fold{padding:3px 9px}
+  .seg{display:flex;gap:4px}
+  .seg button{flex:1;padding:5px 0;font-size:12px}
+  .seg button.cur{background:var(--brass);border-color:transparent;color:#21170e}
+  .dev{display:none;gap:5px;padding-top:0;border-top:0}
+  .dev.cur{display:grid}
+  .dh b{font-size:12.5px}
+  button{font-size:12px;padding:4px 7px}
+  .tab{padding:3px 8px}
+  .read{font-size:12px}
+  #toolbar button{padding:4px 8px}
+  #roomtag{display:none}
+  #toast{top:64px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c" data-i18n-aria="canvasAria" aria-label="天井ファンや扇風機がある家の3D表示"></canvas>
+  <div id="bars" hidden><i></i><i></i></div>
+  <div id="fade"></div>
+  <div id="cap" hidden><b id="cap-name"></b><span id="cap-info"></span></div>
+  <div id="filmhint" data-i18n="filmHint" hidden>撮影モード　画面タップか Esc で終了</div>
+
+  <div id="toolbar" role="toolbar" data-i18n-aria="modes" aria-label="モード">
+    <span class="chip" id="roomtag">リビング</span>
+    <button id="m-orbit" class="on" data-i18n="mOrbit">見回す</button><button id="m-walk" data-i18n="mWalk">歩く</button><button id="m-film" data-i18n="mFilm">撮影</button><button id="snd" aria-pressed="false" data-i18n="sound">音</button><button id="lang" lang="en">EN</button>
+  </div>
+
+  <aside id="panel">
+    <div class="ph">
+      <div><div class="eyebrow">SUBURBAN HOUSE</div><h1 data-i18n="title">ぐらつきファンの部屋</h1></div>
+      <button id="fold" aria-expanded="true" aria-controls="pbody">たたむ</button>
+    </div>
+    <div id="pbody">
+      <div class="seg" role="group" data-i18n-aria="segAria" aria-label="表示する機器"><button data-sec="c" data-i18n="segC">天井ファン</button><button data-sec="s" data-i18n="segS">扇風機</button><button data-sec="w" data-i18n="segW">部屋</button></div>
+      <p class="hint" data-i18n="hint">ドラッグで見回す・ホイールやピンチで寄る。光る点のある所（ひも・スイッチ・ボタン）はクリックで操作できます。</p>
+
+      <section class="dev" data-sec="c">
+        <div class="dh"><b data-i18n="cTitle">天井ファン</b><span class="chip" id="c-chip">中</span><span class="chip" id="c-light">灯</span><span class="chip warn" id="c-fall" data-i18n="cFall" hidden>落下</span></div>
+        <div class="tabs" id="c-tabs" role="group" data-i18n-aria="cTabsAria" aria-label="操作する天井ファン"></div>
+        <div class="read"><span id="c-name">リビングA</span>　<span id="c-rpm">0</span> rpm　<em data-i18n="tilt">傾き</em> <span id="c-tilt">0.0</span>°</div>
+        <div class="bar line" style="--line-at:68.75%" aria-hidden="true"><i id="c-bar"></i></div>
+        <label for="c-imb"><span data-i18n="imb">羽根のアンバランス</span> <output id="c-imb-out" for="c-imb">5%</output></label>
+        <input type="range" id="c-imb" min="0" max="150" value="5">
+        <p class="note" data-i18n="cNote">傾きが赤い落下ライン（5.5°）を超えたまま2秒続くと、天井から外れて落ちます。リビングBは中速で共振するので一番危険です。</p>
+        <div class="btns"><button data-act="cSpeed" data-i18n="bSpeed">速度ひも</button><button data-act="cLight" id="c-lightbtn" data-i18n="bLight">照明ひも</button><button data-act="cPower" id="c-powbtn" data-i18n="bPower">壁スイッチ</button><button data-act="cReset" id="c-reset" data-i18n="bReset">天井に戻す</button><button class="look" data-cam="c" data-i18n="look">見る</button></div>
+      </section>
+
+      <section class="dev" data-sec="s">
+        <div class="dh"><b data-i18n="sTitle">扇風機</b><span class="chip" id="s-chip">弱</span><span class="chip" id="o-chip">首振り</span><span class="chip warn" id="f-chip" data-i18n="sFall" hidden>転倒</span></div>
+        <div class="tabs" id="s-tabs" role="group" data-i18n-aria="sTabsAria" aria-label="操作する扇風機"></div>
+        <div class="read"><span id="s-name">白いリビング扇</span>　<span id="s-rpm">0</span> rpm</div>
+        <div class="read"><em data-i18n="wob">ぐらつき</em> <span id="s-w">0.0</span>°<em class="line-label" data-i18n="tipLine">　転倒ライン 3.0°</em></div>
+        <div class="bar line" aria-hidden="true"><i id="s-bar"></i></div>
+        <label for="s-imb"><span data-i18n="imb">羽根のアンバランス</span> <output id="s-imb-out" for="s-imb">20%</output></label>
+        <input type="range" id="s-imb" min="0" max="150" value="20">
+        <div class="btns">
+          <button data-act="k0" data-i18n="k0">切</button><button data-act="k1" data-i18n="k1">弱</button><button data-act="k2" data-i18n="k2">中</button><button data-act="k3" data-i18n="k3">強</button>
+          <button data-act="osc" id="osc-btn">首振り</button><button class="look" data-cam="s" data-i18n="look">見る</button>
+        </div>
+        <p class="note" data-i18n="sNote">ぐらつきが転倒ラインを超えたまま続くと、揺れが育って倒れます。倒れる先に家具や壁があればそこで止まります。倒れると転倒OFFスイッチでモーターが止まり、起こすと「切」に戻ります。</p>
+        <div class="btns"><button data-act="raise" id="raise-btn" data-i18n="bRaise">起こす</button><button data-act="raiseAll" data-i18n="bRaiseAll">全部起こす</button><button data-act="allOn" data-i18n="bAllOn">全部「強」</button><button data-act="allOff" data-i18n="bAllOff">全部止める</button></div>
+      </section>
+
+      <section class="dev" data-sec="w">
+        <div class="dh"><b><span data-i18n="roomLabel">部屋：</span><span id="w-name">リビング</span></b><span class="chip" id="w-light">照明 入</span><span class="chip" id="k-chip">換気扇 弱</span></div>
+        <div class="btns" id="room-btns"></div>
+        <div class="btns"><button data-act="light" id="light-btn" data-i18n="bRoomLight">この部屋の照明</button><button data-act="kanki" data-i18n="bKanki">換気扇のひも</button><button data-act="marks" id="marks-btn" data-i18n="bMarks">目印</button><button class="look" data-cam="o" data-i18n="bWhole">部屋全体</button></div>
+      </section>
+    </div>
+  </aside>
+  <div id="joy" hidden><i id="jk"></i></div>
+  <div id="tip" hidden></div>
+  <div id="toast" role="status" hidden></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+const H=2.7,T=0.1,DOOR_H=2.1,D2R=Math.PI/180;
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
+const rnd=(()=>{let s=1234567;return()=>(s=(s*16807)%2147483647)/2147483647;})();
+const reduceMotion=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+const coarse=window.matchMedia&&matchMedia('(pointer: coarse)').matches;
+const SPN=['切','弱','中','強']; // printed on the physical keys
+/* ---------- language (日本語 / English) ---------- */
+let LANG='ja';
+try{const q=new URLSearchParams(location.search).get('lang');let st=null;try{st=localStorage.getItem('wfh-lang');}catch(e){}
+  LANG=(q==='en'||q==='ja')?q:(st==='en'||st==='ja')?st:((navigator.language||'ja').toLowerCase().startsWith('ja')?'ja':'en');}catch(e){}
+const DICT={
+ ja:{title:'ぐらつきファンの部屋',canvasAria:'天井ファンや扇風機がある家の3D表示',filmHint:'撮影モード　画面タップか Esc で終了',modes:'モード',
+  mOrbit:'見回す',mWalk:'歩く',mFilm:'撮影',sound:'音',noAudio:'音は非対応',langBtn:'EN',langAria:'Switch to English',fold:'たたむ',unfold:'ひらく',
+  segAria:'表示する機器',segC:'天井ファン',segS:'扇風機',segW:'部屋',
+  hint:'ドラッグで見回す・ホイールやピンチで寄る。光る点のある所（ひも・スイッチ・ボタン）はクリックで操作できます。',
+  cTitle:'天井ファン',cFall:'落下',cTabsAria:'操作する天井ファン',tilt:'傾き',imb:'羽根のアンバランス',
+  cNote:'傾きが赤い落下ライン（5.5°）を超えたまま2秒続くと、天井から外れて落ちます。リビングBは中速で共振するので一番危険です。',
+  bSpeed:'速度ひも',bLight:'照明ひも',bPower:'壁スイッチ',bReset:'天井に戻す',look:'見る',
+  sTitle:'扇風機',sFall:'転倒',sTabsAria:'操作する扇風機',wob:'ぐらつき',tipLine:'　転倒ライン 3.0°',k0:'切',k1:'弱',k2:'中',k3:'強',
+  sNote:'ぐらつきが転倒ラインを超えたまま続くと、揺れが育って倒れます。倒れる先に家具や壁があればそこで止まります。倒れると転倒OFFスイッチでモーターが止まり、起こすと「切」に戻ります。',
+  bRaise:'起こす',bRaiseAll:'全部起こす',bAllOn:'全部「強」',bAllOff:'全部止める',
+  roomLabel:'部屋：',bRoomLight:'この部屋の照明',bKanki:'換気扇のひも',bMarks:'目印',bWhole:'部屋全体',
+  sp:['切','弱','中','強'],kk:['切','弱','強'],on:'入',off:'切',
+  stopped:'停止',powerOff:'電源切',lampOn:'灯',lampOff:'消',fixed:'固定',louverStop:'ルーバー停止',osc:'首振り',louver:'ルーバー',
+  roomLight:o=>`照明 ${o?'入':'切'}`,kankiChip:i=>`換気扇 ${['切','弱','強'][i]}`,
+  tipSpeed:(n,sp,sw)=>`${n} 速度のひも（強→中→弱→切）　いま: ${sp}${sw?'（電源は壁スイッチ）':''}`,
+  tipLamp:(n,on)=>`${n} 照明のひも　いま: ${on?'点灯':'消灯'}`,
+  tipFanDown:n=>`${n}（落ちています）— クリックで天井に戻す`,toastFanDown:n=>`${n}が天井から落ちました！`,
+  tipSwFan:(n,on)=>`壁スイッチ：${n}の電源　いま: ${on?'入':'切'}`,tipSwRoom:(n,on)=>`壁スイッチ：${n}の照明　いま: ${on?'入':'切'}`,
+  tipKey:(n,k,latch,sp,tr)=>`${n}「${k}」${latch?'（押すと固定）':''}　いま: ${sp}${tr?'（転倒中で停止）':''}`,
+  tipKnob:(n,on)=>`${n} 首振りつまみ（押すと首振り）　いま: ${on?'首振り中':'固定'}`,
+  tipLouver:(n,on)=>`${n} ルーバー回転ボタン　いま: ${on?'回転中':'停止'}`,
+  tipTowerOsc:(n,on)=>`${n} 首振りボタン　いま: ${on?'首振り中':'固定'}`,
+  tipStandDown:n=>`${n}（倒れています）— クリックで起こす`,toastStandDown:n=>`${n}が倒れました（転倒OFFスイッチで停止）`,
+  tipKanki:sp=>`換気扇のひも（強→弱→切）　いま: ${sp}`,
+  walkTouch:'左下のスティックで移動、画面をドラッグで向きを変える',walkKeys:'WASD・矢印キーで移動（Shiftで走る）、ドラッグで向きを変える',
+  capFan:n=>`天井ファン ${n}`,capFanDown:'天井から落下',capFanInfo:(r,t)=>`${r} rpm　傾き ${t}°`,capStandDown:'転倒中',capStandInfo:(r,w)=>`${r} rpm　ぐらつき ${w}°`,capKanki:'キッチンの換気扇'},
+ en:{title:'Wobbly Fan House',canvasAria:'3D view of a house full of ceiling fans and electric fans',filmHint:'Film mode · tap the screen or press Esc to exit',modes:'Modes',
+  mOrbit:'Look',mWalk:'Walk',mFilm:'Film',sound:'Sound',noAudio:'No audio',langBtn:'日本語',langAria:'日本語に切り替え',fold:'Hide',unfold:'Show',
+  segAria:'Device group',segC:'Ceiling',segS:'Fans',segW:'Room',
+  hint:'Drag to look around, scroll or pinch to zoom. Anything with a glowing dot (pull chains, switches, buttons) can be clicked.',
+  cTitle:'Ceiling fans',cFall:'Fallen',cTabsAria:'Ceiling fan to control',tilt:'tilt',imb:'Blade imbalance',
+  cNote:'If the tilt stays past the red drop line (5.5°) for 2 seconds, the fan tears off the ceiling. Living B resonates at medium speed, so it is the most dangerous.',
+  bSpeed:'Speed chain',bLight:'Light chain',bPower:'Wall switch',bReset:'Re-hang',look:'View',
+  sTitle:'Electric fans',sFall:'Tipped',sTabsAria:'Electric fan to control',wob:'wobble',tipLine:' · tip line 3.0°',k0:'Off',k1:'Low',k2:'Med',k3:'High',
+  sNote:'If the wobble stays past the tip line, the rocking builds until the fan falls over. Furniture or a wall in the way stops it. The tip-over switch cuts the motor; standing it up resets it to Off.',
+  bRaise:'Stand up',bRaiseAll:'Stand all up',bAllOn:'All on High',bAllOff:'Stop all',
+  roomLabel:'Room: ',bRoomLight:'Room light',bKanki:'Exhaust fan cord',bMarks:'Markers',bWhole:'Whole room',
+  sp:['Off','Low','Med','High'],kk:['Off','Low','High'],on:'on',off:'off',
+  stopped:'Stopped',powerOff:'Power off',lampOn:'Lamp on',lampOff:'Lamp off',fixed:'Fixed',louverStop:'Louver off',osc:'Oscillate',louver:'Louver',
+  roomLight:o=>`Light ${o?'on':'off'}`,kankiChip:i=>`Exhaust ${['off','low','high'][i]}`,
+  tipSpeed:(n,sp,sw)=>`${n} speed chain (High→Med→Low→Off) · now: ${sp}${sw?' (power is on the wall switch)':''}`,
+  tipLamp:(n,on)=>`${n} light chain · now: ${on?'on':'off'}`,
+  tipFanDown:n=>`${n} (fallen) — click to hang it back up`,toastFanDown:n=>`${n} fell off the ceiling!`,
+  tipSwFan:(n,on)=>`Wall switch: ${n} fan power · now: ${on?'on':'off'}`,tipSwRoom:(n,on)=>`Wall switch: ${n} light · now: ${on?'on':'off'}`,
+  tipKey:(n,k,latch,sp,tr)=>`${n} “${k}” key${latch?' (latches down)':''} · now: ${sp}${tr?' (stopped, tipped over)':''}`,
+  tipKnob:(n,on)=>`${n} oscillation knob (push to oscillate) · now: ${on?'oscillating':'fixed'}`,
+  tipLouver:(n,on)=>`${n} louver button · now: ${on?'rotating':'stopped'}`,
+  tipTowerOsc:(n,on)=>`${n} oscillation button · now: ${on?'oscillating':'fixed'}`,
+  tipStandDown:n=>`${n} (tipped over) — click to stand it up`,toastStandDown:n=>`${n} tipped over (the tip-over switch cut the motor)`,
+  tipKanki:sp=>`Exhaust fan cord (High→Low→Off) · now: ${sp}`,
+  walkTouch:'Move with the stick at bottom left, drag the screen to turn',walkKeys:'Move with WASD or the arrow keys (Shift to run), drag to turn',
+  capFan:n=>`Ceiling fan: ${n}`,capFanDown:'Fell off the ceiling',capFanInfo:(r,t)=>`${r} rpm · tilt ${t}°`,capStandDown:'Tipped over',capStandInfo:(r,w)=>`${r} rpm · wobble ${w}°`,capKanki:'Kitchen exhaust fan'}
+};
+const t=(k,...a)=>{const v=(k in DICT[LANG])?DICT[LANG][k]:DICT.ja[k];return typeof v==='function'?v(...a):v;};
+const SP=i=>t('sp')[i];
+function bil(o,key,v){if(v&&typeof v==='object'&&'ja' in v)Object.defineProperty(o,key,{get:()=>v[LANG],enumerable:true,configurable:true});}
+function applyStatic(){
+  document.documentElement.lang=LANG;document.title=t('title');
+  document.querySelectorAll('[data-i18n]').forEach(el=>{el.textContent=t(el.dataset.i18n);});
+  document.querySelectorAll('[data-i18n-aria]').forEach(el=>{el.setAttribute('aria-label',t(el.dataset.i18nAria));});
+  const lb=$('lang');lb.textContent=t('langBtn');lb.setAttribute('lang',LANG==='ja'?'en':'ja');lb.setAttribute('aria-label',t('langAria'));
+}
+
+let NOW=0;
+
+/* ---------- renderer / camera (lighter settings on touch devices) ---------- */
+const canvas=$('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,coarse?1.5:2));
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=coarse?THREE.PCFShadowMap:THREE.PCFSoftShadowMap;
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x231e1b);
+const camera=new THREE.PerspectiveCamera(55,1,0.03,60);
+const controls=new THREE.OrbitControls(camera,canvas);
+controls.enableDamping=true;controls.dampingFactor=0.08;
+controls.minDistance=0.6;controls.maxDistance=4.5;controls.rotateSpeed=0.6;
+camera.position.set(3.3,1.55,2.6);controls.target.set(0,1.6,-0.3);
+function resize(){const r=canvas.parentElement.getBoundingClientRect();renderer.setSize(r.width,r.height,false);camera.aspect=r.width/Math.max(1,r.height);camera.fov=camera.aspect<0.8?72:55;camera.updateProjectionMatrix();}
+window.addEventListener('resize',resize);resize();
+
+/* ---------- helpers ---------- */
+const M=(c,o={})=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:0.75,metalness:0},o));
+function mesh(geo,mat,o={}){const m=new THREE.Mesh(geo,mat);m.position.set(o.x||0,o.y||0,o.z||0);m.rotation.set(o.rx||0,o.ry||0,o.rz||0);m.castShadow=o.cast!==false;m.receiveShadow=!!o.recv;return m;}
+function canvasTex(w,h,draw){const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d'),w,h);const t=new THREE.CanvasTexture(c);t.anisotropy=4;return t;}
+function labelTex(text,bg,fg){return canvasTex(128,128,(g,w,h)=>{g.fillStyle=bg;g.fillRect(0,0,w,h);g.fillStyle=fg;g.font='bold 76px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(text,w/2,h/2+4);});}
+const clickables=[],chains=[];
+const hitMat=new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false,colorWrite:false});
+const tmpW=V(),tmpS=V(),tmpD=V(),wv=V();
+
+// glowing hint markers on everything that can be operated
+const markTex=canvasTex(64,64,(g)=>{const gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,255,255,1)');gr.addColorStop(0.35,'rgba(255,222,160,.85)');gr.addColorStop(1,'rgba(255,200,120,0)');g.fillStyle=gr;g.fillRect(0,0,64,64);});
+const markers=[];let marksOn=true;
+function addMarker(parent,x,y,z,size){const m=new THREE.Sprite(new THREE.SpriteMaterial({map:markTex,color:0xffcf8a,transparent:true,depthWrite:false,opacity:0.6}));m.position.set(x,y,z);const s=size||0.045;m.scale.set(s,s,1);m.userData.ph=rnd()*6;m.userData.s=s;parent.add(m);markers.push(m);return m;}
+function updateMarkers(t){const vis=marksOn&&mode!=='film';markers.forEach(m=>{m.visible=vis;if(vis){const k=0.5+0.5*Math.sin(t*3+m.userData.ph);m.material.opacity=0.3+0.45*k;const s=m.userData.s*(0.9+0.2*k);m.scale.set(s,s,1);}});}
+
+/* ---------- house layout ---------- */
+const ROOMS=[
+  {id:'living',name:{ja:'リビング',en:'Living room'},x0:-4,x1:4,z0:-3,z1:3,light:{x:0,z:0.9,i:0.85},cam:[[3.3,1.55,2.6],[0,1.6,-0.3]]},
+  {id:'kitchen',name:{ja:'キッチン',en:'Kitchen'},x0:4,x1:8,z0:-3,z1:3,light:{x:6,z:-0.6,i:0.8},cam:[[7.5,1.6,2.6],[5.6,1.4,-0.6]]},
+  {id:'hall',name:{ja:'廊下',en:'Hallway'},x0:-5.6,x1:-4,z0:-3,z1:3,light:{x:-4.8,z:1.2,i:0.55},cam:[[-4.35,1.6,2.75],[-4.85,1.6,-1.2]]},
+  {id:'bed',name:{ja:'寝室',en:'Bedroom'},x0:-10,x1:-5.6,z0:-3,z1:3,light:{x:-7.8,z:1.4,i:0.75},cam:[[-6.0,1.6,2.7],[-8.1,1.3,-0.4]]},
+];
+ROOMS.forEach(r=>{r.on=true;bil(r,'name',r.name);});
+const byId=id=>ROOMS.find(r=>r.id===id);
+function roomAt(x,z){return ROOMS.find(r=>x>=r.x0&&x<=r.x1&&z>=r.z0&&z<=r.z1)||null;}
+function clampRoom(p,r,m){p.x=clamp(p.x,r.x0+T/2+m,r.x1-T/2-m);p.z=clamp(p.z,r.z0+T/2+m,r.z1-T/2-m);p.y=clamp(p.y,0.15,H-0.12);return p;}
+const obstacles=[];
+function addObs(x0,x1,z0,z1,top){obstacles.push({x0,x1,z0,z1,top});}
+function block(x0,x1,y0,y1,z0,z1,mat,obs){const m=mesh(new THREE.BoxGeometry(x1-x0,y1-y0,z1-z0),mat,{x:(x0+x1)/2,y:(y0+y1)/2,z:(z0+z1)/2,recv:true});scene.add(m);if(obs!==false)addObs(x0,x1,z0,z1,y1);return m;}
+
+// walls with door openings; full-height pieces become collision segments
+const wallMat=M(0xdccdb6,{roughness:0.9});
+const jambMat=M(0xefe9df,{roughness:0.6});
+const wallSegs=[];
+function wall(x1,z1,x2,z2,doors){
+  doors=(doors||[]).slice().sort((a,b)=>a[0]-b[0]);
+  const hz=z1===z2,len=hz?x2-x1:z2-z1;
+  const at=t=>hz?[x1+t,z1]:[x1,z1+t];
+  const piece=(a,b,y0,y1)=>{const l=b-a,[cx,cz]=at((a+b)/2);scene.add(mesh(hz?new THREE.BoxGeometry(l,y1-y0,T):new THREE.BoxGeometry(T,y1-y0,l),wallMat,{x:cx,y:(y0+y1)/2,z:cz,cast:false,recv:true}));};
+  const seg=(a,b)=>{const p=at(a),q=at(b);wallSegs.push({ax:p[0],az:p[1],bx:q[0],bz:q[1]});};
+  let s=0;
+  doors.forEach(([a,b])=>{
+    if(a>s){piece(s,a,0,H);seg(s,a);}
+    piece(a,b,DOOR_H,H);
+    [a,b].forEach(t=>{const [jx,jz]=at(t);scene.add(mesh(hz?new THREE.BoxGeometry(0.05,DOOR_H,T+0.03):new THREE.BoxGeometry(T+0.03,DOOR_H,0.05),jambMat,{x:jx,y:DOOR_H/2,z:jz,cast:false}));});
+    const [hx,hzz]=at((a+b)/2);scene.add(mesh(hz?new THREE.BoxGeometry(b-a+0.05,0.05,T+0.03):new THREE.BoxGeometry(T+0.03,0.05,b-a+0.05),jambMat,{x:hx,y:DOOR_H,z:hzz,cast:false}));
+    s=b;});
+  if(len>s){piece(s,len,0,H);seg(s,len);}
+}
+wall(-10,-3,8,-3);wall(-10,3,8,3);wall(-10,-3,-10,3);wall(8,-3,8,3);
+wall(4,-3,4,3,[[2.3,3.7]]);       // living ↔ kitchen
+wall(-4,-3,-4,3,[[2.7,3.6]]);     // living ↔ hall
+wall(-5.6,-3,-5.6,3,[[0.6,1.5]]); // hall ↔ bedroom
+scene.add(mesh(new THREE.PlaneGeometry(18.2,6.2),M(0xf0e9de,{roughness:0.95}),{x:-1,y:H,z:0,rx:Math.PI/2,cast:false}));
+
+// floors
+function plankTex(rx,rz){const t=canvasTex(512,512,(g)=>{const rh=64;
+  for(let r=0;r<8;r++){let x=-rnd()*200;while(x<512){const w=170+rnd()*170;g.fillStyle=`hsl(${25+rnd()*5},${32+rnd()*10}%,${29+rnd()*8}%)`;g.fillRect(x,r*rh,w,rh);g.fillStyle='rgba(28,16,9,.45)';g.fillRect(x,r*rh,2,rh);x+=w;}
+    g.fillStyle='rgba(28,16,9,.5)';g.fillRect(0,r*rh,512,2);}
+  g.strokeStyle='rgba(20,10,5,.08)';for(let i=0;i<900;i++){const y=rnd()*512,x=rnd()*512;g.beginPath();g.moveTo(x,y);g.lineTo(x+20+rnd()*60,y+(rnd()-.5)*2);g.stroke();}});
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx,rz);return t;}
+const tileTex=canvasTex(256,256,(g)=>{g.fillStyle='#8f938f';g.fillRect(0,0,256,256);for(let i=0;i<2;i++)for(let j=0;j<2;j++){g.fillStyle=(i+j)%2?'#e9e5dc':'#d6d1c6';g.fillRect(i*128+3,j*128+3,122,122);}});
+tileTex.wrapS=tileTex.wrapT=THREE.RepeatWrapping;tileTex.repeat.set(4/0.6,6/0.6);
+const carpetTex=canvasTex(128,128,(g)=>{g.fillStyle='#b4a08c';g.fillRect(0,0,128,128);for(let i=0;i<1600;i++){g.fillStyle=`rgba(${rnd()<.5?'60,40,30':'255,245,230'},${0.05+rnd()*0.08})`;g.fillRect(rnd()*128,rnd()*128,1.5,1.5);}});
+carpetTex.wrapS=carpetTex.wrapT=THREE.RepeatWrapping;carpetTex.repeat.set(6,8);
+function floor(r,mat){scene.add(mesh(new THREE.PlaneGeometry(r.x1-r.x0,r.z1-r.z0),mat,{x:(r.x0+r.x1)/2,z:(r.z0+r.z1)/2,rx:-Math.PI/2,cast:false,recv:true}));}
+floor(byId('living'),M(0xffffff,{map:plankTex(4,3),roughness:0.6}));
+floor(byId('kitchen'),M(0xffffff,{map:tileTex,roughness:0.45}));
+floor(byId('hall'),M(0xffffff,{map:plankTex(0.8,3),roughness:0.6}));
+floor(byId('bed'),M(0xffffff,{map:carpetTex,roughness:1}));
+
+// windows with a dusk suburb outside (rooftops, utility pole and wires)
+const duskTex=canvasTex(512,320,(g,w,h)=>{
+  const gr=g.createLinearGradient(0,0,0,h);gr.addColorStop(0,'#3b3a64');gr.addColorStop(.45,'#b5688a');gr.addColorStop(.78,'#f0a35d');gr.addColorStop(1,'#f6c88a');
+  g.fillStyle=gr;g.fillRect(0,0,w,h);
+  let x=-10;while(x<w){const bw=60+rnd()*70,bh=45+rnd()*45;g.fillStyle='#2b2233';g.beginPath();g.moveTo(x,h);g.lineTo(x,h-bh);g.lineTo(x+bw/2,h-bh-26-rnd()*10);g.lineTo(x+bw,h-bh);g.lineTo(x+bw,h);g.fill();
+    if(rnd()<.75){g.fillStyle='#f6c86b';g.fillRect(x+bw*.3,h-bh*.62,9,11);}x+=bw+6+rnd()*22;}
+  g.fillStyle='#211a29';g.fillRect(372,80,6,240);g.fillRect(352,100,46,4);g.fillRect(358,116,34,3);
+  g.strokeStyle='#211a29';g.lineWidth=1.4;[[110,101],[125,117]].forEach(([a,b])=>{g.beginPath();g.moveTo(0,a+10);g.quadraticCurveTo(190,a+40,374,b-1);g.quadraticCurveTo(450,b+16,512,b+6);g.stroke();});
+});
+const frameMat=M(0xf3efe8,{roughness:0.5});
+function makeWindow(cx,w,h,cy){
+  const g=new THREE.Group();g.position.set(cx,cy,-3+T/2+0.012);scene.add(g);
+  g.add(mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:duskTex}),{cast:false}));
+  [[0,h/2+0.03,w+0.12,0.06],[0,-h/2-0.03,w+0.12,0.06],[-w/2-0.03,0,0.06,h+0.12],[w/2+0.03,0,0.06,h+0.12],[0,0,0.035,h]].forEach(([x,y,ww,hh])=>g.add(mesh(new THREE.BoxGeometry(ww,hh,0.05),frameMat,{x,y,z:0.02,cast:false})));
+  g.add(mesh(new THREE.BoxGeometry(w+0.2,0.035,0.14),frameMat,{y:-h/2-0.07,z:0.06,cast:false}));
+}
+makeWindow(0,1.8,1.1,1.6);makeWindow(6,1.2,0.75,1.65);makeWindow(-7.8,1.4,1.05,1.65);
+
+// curtains: vertices move with the wind from the fans
+const curtains=[];
+function makeCurtain(cx,topY,w,h,color){
+  const geo=new THREE.PlaneGeometry(w,h,8,14);
+  const m=mesh(geo,M(color,{roughness:0.95,side:THREE.DoubleSide}),{x:cx,y:topY-h/2,z:-3+T/2+0.08,recv:true});scene.add(m);
+  curtains.push({m,geo,base:geo.attributes.position.array.slice(),h,wind:V(),ph:rnd()*6,center:V(cx,topY-h/2,-2.85)});
+}
+function curtainRod(cx,w,y){scene.add(mesh(new THREE.CylinderGeometry(0.012,0.012,w,10),M(0x6b5a48,{metalness:0.5,roughness:0.4}),{x:cx,y,z:-3+T/2+0.09,rz:Math.PI/2,cast:false}));}
+makeCurtain(-1.18,2.32,0.55,1.6,0x9fb39b);makeCurtain(1.18,2.32,0.55,1.6,0x9fb39b);curtainRod(0,3.0,2.34);
+makeCurtain(-7.8-0.95,2.27,0.5,1.5,0xc6a49a);makeCurtain(-7.8+0.95,2.27,0.5,1.5,0xc6a49a);curtainRod(-7.8,2.5,2.29);
+function updateCurtains(dt,t){
+  curtains.forEach(c=>{
+    windAt(c.center,tmpW);c.wind.lerp(tmpW,1-Math.exp(-dt*3));
+    const mag=Math.hypot(c.wind.x,c.wind.z),pos=c.geo.attributes.position.array,b=c.base;
+    for(let i=0;i<pos.length;i+=3){
+      const bx=b[i],by=b[i+1],hang=clamp((c.h/2-by)/c.h,0,1),hp=Math.pow(hang,1.4);
+      const fold=0.025*Math.sin(bx*38),flut=Math.sin(t*6+bx*9+by*4+c.ph)*0.035*mag*hang;
+      pos[i]=bx+c.wind.x*0.45*hp+flut*0.3;
+      pos[i+1]=by+mag*0.18*hang*hang;
+      pos[i+2]=Math.max(-0.05,fold+c.wind.z*0.45*hp+flut);
+    }
+    c.geo.attributes.position.needsUpdate=true;c.geo.computeVertexNormals();
+  });
+}
+
+/* ---------- furniture (also obstacles for walking and for falling fans) ---------- */
+const fabric=M(0x546f7c,{roughness:0.95});
+block(-1.0,1.0,0,0.42,-2.92,-2.07,fabric);
+block(-1.0,1.0,0.38,0.86,-2.95,-2.76,fabric);
+block(-1.09,-0.91,0,0.58,-2.92,-2.07,fabric);block(0.91,1.09,0,0.58,-2.92,-2.07,fabric);
+[-0.45,0.45].forEach(x=>block(x-0.43,x+0.43,0.42,0.52,-2.8,-2.1,M(0x5d7b89,{roughness:0.95}),false));
+scene.add(mesh(new THREE.PlaneGeometry(3.0,2.1),M(0x6d7a6a,{roughness:1}),{y:0.004,z:-0.9,rx:-Math.PI/2,cast:false,recv:true}));
+(function plant(){const pot=new THREE.Group();pot.position.set(-3.4,0,-2.45);scene.add(pot);
+  pot.add(mesh(new THREE.CylinderGeometry(0.16,0.12,0.32,24),M(0xb4775a,{roughness:0.8}),{y:0.16}));
+  const leafMat=M(0x4f7a52,{roughness:0.7,side:THREE.DoubleSide});
+  for(let i=0;i<9;i++){const a=i/9*Math.PI*2;pot.add(mesh(new THREE.ConeGeometry(0.06,0.6+rnd()*0.3,6),leafMat,{x:Math.cos(a)*0.06,y:0.6,z:Math.sin(a)*0.06,rx:Math.sin(a)*0.35,rz:-Math.cos(a)*0.35}));}
+  addObs(-3.58,-3.22,-2.63,-2.27,0.9);})();
+// chabudai for the Showa desk fan
+const chabuWood=M(0x7a5236,{roughness:0.55});
+(function(){const tb=new THREE.Group();tb.position.set(-2.6,0,-1.9);scene.add(tb);
+  tb.add(mesh(new THREE.CylinderGeometry(0.42,0.42,0.03,48),chabuWood,{y:0.315,recv:true}));
+  [0,1,2,3].forEach(i=>{const a=i*Math.PI/2+Math.PI/4;tb.add(mesh(new THREE.BoxGeometry(0.04,0.3,0.04),chabuWood,{x:Math.cos(a)*0.28,y:0.15,z:Math.sin(a)*0.28}));});
+  addObs(-2.92,-2.28,-2.22,-1.58,0.33);})();
+// kitchen
+const cabinet=M(0xe9e4da,{roughness:0.55}),counterTop=M(0x8a8f94,{roughness:0.35,metalness:0.2});
+block(4.6,7.95,0,0.88,-2.95,-2.35,cabinet);block(4.58,7.95,0.88,0.92,-2.97,-2.33,counterTop,false);
+block(5.5,6.1,0.92,0.925,-2.85,-2.45,M(0x55595d,{metalness:0.6,roughness:0.3}),false);
+block(7.05,7.75,0.92,0.95,-2.9,-2.4,M(0x2a2b2d,{roughness:0.4}),false);
+block(7.2,7.95,0,1.8,1.95,2.95,M(0xdfe2e3,{roughness:0.35,metalness:0.1}));
+(function(){const wood=M(0x9a7350,{roughness:0.5});block(5.3,6.7,0.69,0.72,0.6,1.5,wood,false);addObs(5.3,6.7,0.6,1.5,0.72);
+  [[5.36,0.66],[6.64,0.66],[5.36,1.44],[6.64,1.44]].forEach(([x,z])=>block(x-0.025,x+0.025,0,0.69,z-0.025,z+0.025,wood,false));
+  [[6.0,0.25],[6.0,1.85]].forEach(([x,z])=>{block(x-0.21,x+0.21,0.42,0.46,z-0.2,z+0.2,wood);block(x-0.21,x+0.21,0,0.42,z-0.02,z+0.02,wood,false);});})();
+// hall
+block(-5.53,-5.2,0,1.0,1.3,2.6,M(0x8a6a4c,{roughness:0.6}));
+block(-5.2,-4.4,0,2.05,2.93,2.95,M(0x6e4f37,{roughness:0.5}),false);
+scene.add(mesh(new THREE.SphereGeometry(0.025,12,8),M(0xc9a46a,{metalness:0.8,roughness:0.3}),{x:-4.52,y:1.0,z:2.92}));
+// bedroom
+const linen=M(0xe7e1d6,{roughness:0.9});
+block(-9.95,-8.0,0,0.38,-1.0,1.4,M(0x7d6450,{roughness:0.7}));
+block(-9.93,-8.02,0.38,0.5,-0.98,1.38,M(0x8ea1b3,{roughness:0.95}),false);
+block(-9.9,-9.45,0.5,0.6,-0.8,1.2,linen,false);
+block(-9.97,-9.86,0,1.05,-1.05,1.45,M(0x6b5240,{roughness:0.7}));
+block(-7.4,-6.2,0,0.82,-2.95,-2.5,M(0xa98463,{roughness:0.6}));
+
+/* ---------- lighting ---------- */
+const hemi=new THREE.HemisphereLight(0xfff1df,0x4a3a30,0.32);scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xffb37a,0.7);sun.position.set(-0.6,2.4,-2.7);sun.target.position.set(0.9,0,1.2);
+sun.castShadow=true;sun.shadow.mapSize.set(coarse?512:1024,coarse?512:1024);Object.assign(sun.shadow.camera,{left:-6,right:6,top:6,bottom:-6,near:0.1,far:14});sun.shadow.bias=-0.0006;
+scene.add(sun,sun.target);
+ROOMS.forEach(r=>{
+  r.pl=new THREE.PointLight(0xffe6c8,r.light.i,11,1.6);r.pl.position.set(r.light.x,2.55,r.light.z);scene.add(r.pl);
+  r.discMat=new THREE.MeshBasicMaterial({color:0xfff4e2});
+  scene.add(mesh(new THREE.CircleGeometry(0.06,24),r.discMat,{x:r.light.x,y:H-0.003,z:r.light.z,rx:Math.PI/2,cast:false}));
+});
+// The ambient fill and the window light follow the room the camera is in, so switching that room's
+// light off really darkens it; only the window glow, lamp kits and switch locator lamps remain.
+function updateLights(){
+  ROOMS.forEach(r=>{r.pl.intensity+=((r.on?r.light.i:0)-r.pl.intensity)*0.15;r.discMat.color.setScalar(0.12+0.88*r.pl.intensity/r.light.i);});
+  const here=roomAt(camera.position.x,camera.position.z)||orbitRoom,lit=here.on;
+  hemi.intensity+=((lit?0.32:0.03)-hemi.intensity)*0.12;
+  sun.intensity+=((lit?(here.id==='living'?0.7:0.42):(here.id==='living'?0.12:0.04))-sun.intensity)*0.12;
+}
+
+/* ---------- wind field from the electric fans ---------- */
+function windAt(p,out){
+  out.set(0,0,0);
+  stands.forEach(s=>{
+    if(s.fallen||s.omega<0.5)return;
+    const hp=s.windPos,fd=s.windDir,dx=p.x-hp.x,dz=p.z-hp.z,dh=Math.hypot(dx,dz);if(dh<0.05)return;
+    const cos=(dx*fd.x+dz*fd.z)/dh;if(cos<s.windCos)return;
+    const k=(s.omega/s.speeds[3])**2*clamp((cos-s.windCos)/(0.97-s.windCos),0,1)*Math.exp(-dh/4)*Math.exp(-Math.abs(p.y-hp.y)/1.2)*s.windK;
+    out.x+=fd.x*k;out.z+=fd.z*k;});
+  return out;
+}
+
+/* ---------- pull chains / cords ---------- */
+const beadGeo=new THREE.SphereGeometry(0.0046,8,6);
+const chainMat=M(0xc9a46a,{metalness:0.8,roughness:0.3});
+function makeChain(parent,o){
+  const pivot=new THREE.Group();pivot.position.set(o.x,o.y,o.z);parent.add(pivot);
+  const chain=new THREE.Group();pivot.add(chain);
+  for(let y=0.06;y>-o.len;y-=0.0105)chain.add(mesh(beadGeo,o.beadMat||chainMat,{y,cast:false}));
+  const fob=o.fob();fob.position.y=-o.len-0.022;chain.add(fob);
+  const hr=coarse?0.065:0.038;
+  const hit=mesh(new THREE.CylinderGeometry(hr,hr,o.len+0.09,8),hitMat,{y:-o.len/2-0.02,cast:false});chain.add(hit);
+  addMarker(chain,0,-o.len-0.022,0,0.05);
+  const c={pivot,chain,len:o.len,body:o.body||null,fan:o.fan||null,ax:0,az:0,vx:0,vz:0,pullT:-1,p1:null,v1:null,acc:V(),ph:rnd()*6};
+  c.fire=()=>{c.pullT=0;c.vx+=(rnd()-.5)*1.6;c.vz+=(rnd()-.5)*1.6;c.pivot.getWorldPosition(tmpS);sfx('chain',1,tmpS);o.onPull();};
+  hit.userData={act:c.fire,label:o.label};
+  clickables.push(hit);chains.push(c);return c;
+}
+function updateChain(c,dt,t){
+  if(c.fan&&c.fan.fallen){if(!c.down){c.pivot.rotation.set(1.45,0,0);c.chain.position.y=0;Object.assign(c,{p1:null,v1:null,ax:0,az:0,vx:0,vz:0,down:true});}return;}
+  c.down=false;
+  c.pivot.getWorldPosition(tmpW);
+  if(c.p1){const vx=(tmpW.x-c.p1.x)/dt,vz=(tmpW.z-c.p1.z)/dt;
+    if(c.v1){c.acc.x+=(clamp((vx-c.v1.x)/dt,-15,15)-c.acc.x)*0.5;c.acc.z+=(clamp((vz-c.v1.z)/dt,-15,15)-c.acc.z)*0.5;c.v1.set(vx,0,vz);}else c.v1=V(vx,0,vz);
+    c.p1.copy(tmpW);}else c.p1=tmpW.clone();
+  tmpW.y-=c.len*0.6;windAt(tmpW,wv);
+  const gust=14*(1+0.6*Math.sin(t*11+c.ph));
+  const l=c.len*0.65,k=9.8/l,damp=0.9,n=3,h=dt/n;
+  for(let i=0;i<n;i++){c.vx+=(-k*c.ax-damp*c.vx+c.acc.z/l-wv.z*gust)*h;c.vz+=(-k*c.az-damp*c.vz-c.acc.x/l+wv.x*gust)*h;c.ax+=c.vx*h;c.az+=c.vz*h;}
+  c.ax=clamp(c.ax,-0.6,0.6);c.az=clamp(c.az,-0.6,0.6);
+  const bx=c.body?c.body.rotation.x:0,bz=c.body?c.body.rotation.z:0;
+  c.pivot.rotation.x=c.ax-bx;c.pivot.rotation.z=c.az-bz;
+  let pull=0;if(c.pullT>=0){c.pullT+=dt;const u=c.pullT/0.34;if(u>=1)c.pullT=-1;else pull=-0.055*Math.sin(Math.PI*u);}
+  c.chain.position.y=pull;
+}
+
+/* ---------- ceiling fans ---------- */
+const fans=[];let csel=1;
+const FAN_LINE=5.5;
+function makeCeilingFan(o){
+  const f=Object.assign({omega:0,angle:0,amp:0,power:true,lastRev:0,fb:0,fallen:false,cut:false,landed:false,wires:[],tauUp:2.3,tauDown:5.5,zeta:0.12,kDeg:1.6},o);
+  bil(f,'name',o.name);bil(f,'short',o.short);
+  f.imbDefault=o.imb;f.idx=fans.length;fans.push(f);f.room=roomAt(o.x,o.z);
+  const mount=new THREE.Group();mount.position.set(o.x,H,o.z);scene.add(mount);f.mount=mount;
+  mount.add(mesh(new THREE.CylinderGeometry(0.075,0.09,0.06,32),o.finish,{y:-0.03}));
+  const body=new THREE.Group();body.position.y=-0.055;mount.add(body);f.body=body;
+  body.add(mesh(new THREE.SphereGeometry(0.022,16,12),o.finish));
+  const L=o.rod;
+  if(L>0.03)body.add(mesh(new THREE.CylinderGeometry(0.011,0.011,L,12),o.finish,{y:-L/2}));
+  const motorY=-L-0.06;
+  body.add(mesh(new THREE.CylinderGeometry(0.1,0.125,0.11,40),o.finish,{y:motorY}));
+  body.add(mesh(new THREE.CylinderGeometry(0.128,0.128,0.012,40),o.trim,{y:motorY-0.058}));
+  const rotor=new THREE.Group();rotor.position.y=motorY-0.075;body.add(rotor);f.rotor=rotor;
+  rotor.add(mesh(new THREE.CylinderGeometry(0.13,0.13,0.022,40),o.finish));
+  const BL=o.bladeLen||0.5,BW=o.bladeW||0.13;
+  for(let i=0;i<o.blades;i++){
+    const arm=new THREE.Group();arm.rotation.y=i/o.blades*Math.PI*2;rotor.add(arm);
+    arm.add(mesh(new THREE.BoxGeometry(0.18,0.012,0.04),o.trim,{x:0.15,y:-0.004}));
+    arm.add(mesh(new THREE.BoxGeometry(BL,0.008,BW),i===o.oddBlade?o.oddMat:o.bladeMat,{x:0.22+BL/2,y:-0.01,rx:o.pitch}));
+  }
+  const swY=motorY-0.135;
+  body.add(mesh(new THREE.CylinderGeometry(0.072,0.058,0.07,32),o.finish,{y:swY}));
+  const bottomY=swY-0.035;
+  if(o.light){
+    const glass=new THREE.MeshStandardMaterial({color:0xfff3dd,emissive:0xffd29a,emissiveIntensity:1,roughness:0.4});
+    body.add(mesh(new THREE.SphereGeometry(0.066,32,16,0,Math.PI*2,Math.PI/2,Math.PI/2),glass,{y:bottomY,cast:false}));
+    const pl=new THREE.PointLight(0xffd9a8,1.0,7,1.8);pl.position.y=bottomY-0.07;body.add(pl);
+    f.lamp={glass,pl,on:true};
+  }
+  f.speedChain=makeChain(body,{x:0.072,y:swY+0.01,z:0,len:o.chainLen||0.3,body,fan:f,fob:o.fob,
+    onPull:()=>{f.speed=f.speed===0?3:f.speed-1;}, // real pull-chain order: 強→中→弱→切
+    label:()=>t('tipSpeed',f.name,SP(f.speed),f.hasSwitch)});
+  if(o.light)f.lightChain=makeChain(body,{x:-0.072,y:swY+0.01,z:0,len:0.26,body,fan:f,fob:()=>mesh(new THREE.SphereGeometry(0.014,16,12),o.finish,{cast:false}),
+    onPull:()=>{f.lamp.on=!f.lamp.on;},label:()=>t('tipLamp',f.name,f.lamp.on)});
+  f.tipR=0.22+BL;f.lowY=L+0.23+(o.light?0.066:0);
+  f.fallHit=mesh(new THREE.SphereGeometry(0.5,10,8),hitMat,{y:-L-0.12,cast:false});body.add(f.fallHit);
+  f.fallHit.userData={act:()=>{selectFan(f.idx);resetFan(f);},label:()=>t('tipFanDown',f.name)};
+  f.sound=()=>{const c=f.omega/2.2;f.body.getWorldPosition(tmpS);return{lvl:0.3*c*c,cut:180+c*420,hum:(f.omega>0.05&&!f.cut)?0.012:0,pos:tmpS};};
+  return f;
+}
+function floorAt(x,z){let y=0;obstacles.forEach(o=>{if(o.top<1.2&&x>=o.x0&&x<=o.x1&&z>=o.z0&&z<=o.z1)y=Math.max(y,o.top);});return y;}
+function addWires(f){ // torn wires dangling from the canopy and sticking out of the fallen fan
+  [[f.mount,-0.06,1],[f.body,0.02,-1]].forEach(([p,y,dir])=>{[[0x222222,0.012],[0xeeeeee,-0.012]].forEach(([col,off])=>{
+    const pts=[];for(let i=0;i<9;i++)pts.push(V(off+Math.sin(i*0.8)*0.02,y-dir*i*0.028,Math.cos(i*0.9)*0.02));
+    const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:col}));p.add(l);f.wires.push(l);});});
+}
+function detachFan(f){
+  Object.assign(f,{fallen:true,cut:true,fb:0,landed:false,hitOnce:false});
+  scene.attach(f.body);
+  f.fv=V((rnd()-0.5)*0.5,0,(rnd()-0.5)*0.5);
+  // it lands tipped onto one blade: height = the lower of the blade tip and the light kit after tilting
+  const a=(16+rnd()*10)*D2R,ca=Math.cos(a),sa=Math.sin(a);
+  f.restQ=new THREE.Quaternion().setFromAxisAngle(V(rnd()-0.5,0,rnd()-0.5).normalize(),a);
+  f.restYw=floorAt(f.x,f.z)+Math.max((f.rod+0.21)*ca+f.tipR*sa,f.lowY*ca+0.07*sa);
+  addWires(f);
+  if(!clickables.includes(f.fallHit))clickables.push(f.fallHit);
+  f.body.getWorldPosition(tmpS);sfx('snap',1,tmpS);
+  showToast(t('toastFanDown',f.name));
+}
+function resetFan(f){
+  if(!f.fallen)return;
+  f.mount.add(f.body);f.body.position.set(0,-0.055,0);f.body.quaternion.identity();
+  Object.assign(f,{fallen:false,cut:false,landed:false,fb:0,amp:0,omega:0});
+  f.imb=Math.min(f.imb,f.imbDefault);
+  f.wires.forEach(w=>w.parent.remove(w));f.wires=[];
+  const i=clickables.indexOf(f.fallHit);if(i>=0)clickables.splice(i,1);
+  sfx('knob',1,f.mount.position);
+}
+function updateFan(f,dt){
+  const target=(f.power&&!f.cut)?f.speeds[f.speed]:0;
+  const tau=target>f.omega?f.tauUp:(f.landed?0.7:f.tauDown);
+  f.omega+=(target-f.omega)*(1-Math.exp(-dt/tau));
+  f.angle+=f.omega*2*Math.PI*dt;f.rotor.rotation.y=-f.angle;
+  if(f.fallen){
+    if(!f.landed){
+      f.fv.y-=9.8*dt;f.body.position.addScaledVector(f.fv,dt);
+      f.body.quaternion.slerp(f.restQ,1-Math.exp(-dt*2.5));
+      if(f.body.position.y<=f.restYw){
+        f.body.position.y=f.restYw;
+        if(f.fv.y<-1.2){f.body.getWorldPosition(tmpS);sfx(f.hitOnce?'thud':'crash',f.hitOnce?0.35:1,tmpS);f.hitOnce=true;f.fv.y=-f.fv.y*0.15;f.fv.x*=0.4;f.fv.z*=0.4;}
+        else{f.landed=true;f.body.quaternion.copy(f.restQ);}
+      }
+    }
+  }else{
+    // forced response to a rotating unbalance: amplitude ratio r²/√((1-r²)²+(2ζr)²), lagging by the phase angle
+    const r=f.omega/f.wn,ratio=r*r/Math.sqrt((1-r*r)**2+(2*f.zeta*r)**2),phase=Math.atan2(2*f.zeta*r,1-r*r);
+    f.amp+=(f.imb*f.kDeg*ratio*D2R-f.amp)*(1-Math.exp(-dt/0.6));
+    const d=f.angle-phase;
+    f.body.rotation.z=f.amp*Math.cos(d);f.body.rotation.x=-f.amp*Math.sin(d);
+    if(f.amp>FAN_LINE*D2R){f.fb+=dt;if(f.fb>=2)detachFan(f);}else f.fb=Math.max(0,f.fb-dt);
+    const rev=Math.floor(f.angle/(2*Math.PI));
+    if(rev!==f.lastRev){f.lastRev=rev;if(f.amp>0.04){f.body.getWorldPosition(tmpS);sfx('clack',Math.min(1.6,(f.amp-0.03)*25),tmpS);}}
+  }
+  if(f.lamp){const on=(f.lamp.on&&f.power&&!f.cut)?1:0;f.lamp.pl.intensity+=(on-f.lamp.pl.intensity)*0.2;f.lamp.glass.emissiveIntensity+=(on-f.lamp.glass.emissiveIntensity)*0.2;}
+}
+
+const brass=M(0xb88a4a,{metalness:0.7,roughness:0.35}),darkBrass=M(0x7a5a33,{metalness:0.6,roughness:0.4});
+const woodFob=()=>mesh(new THREE.CylinderGeometry(0.011,0.011,0.05,16),M(0x5b3b26,{roughness:0.5}),{cast:false});
+const whiteFob=()=>mesh(new THREE.ConeGeometry(0.014,0.05,16),M(0xf4f1ea,{roughness:0.5}),{rx:Math.PI,cast:false});
+makeCeilingFan({name:{ja:'リビングA',en:'Living A'},short:{ja:'リビングA',en:'Living A'},x:-1.4,z:0.3,rod:0.3,blades:5,pitch:0.21,finish:brass,trim:darkBrass,bladeMat:M(0x6b4a32,{roughness:0.55}),
+  light:true,speed:2,speeds:[0,0.8,1.4,2.2],imb:0.05,wn:1.9,zeta:0.15,fob:woodFob,tauDown:5});
+const fB=makeCeilingFan({name:{ja:'リビングB',en:'Living B'},short:{ja:'リビングB',en:'Living B'},x:1.4,z:-0.3,rod:0.48,blades:4,pitch:0.23,finish:M(0xefece6,{roughness:0.45,metalness:0.1}),trim:M(0x9aa0a4,{metalness:0.5,roughness:0.4}),
+  bladeMat:M(0xc49a6c,{roughness:0.6}),oddBlade:2,oddMat:M(0x86483a,{roughness:0.55}),chainLen:0.32,
+  speed:2,speeds:[0,0.8,1.4,2.2],imb:0.6,wn:1.45,zeta:0.11,fob:whiteFob,tauUp:2.4,tauDown:6});
+const fC=makeCeilingFan({name:{ja:'キッチン',en:'Kitchen'},short:{ja:'キッチン',en:'Kitchen'},x:6.0,z:-0.6,rod:0.42,blades:3,pitch:0.26,bladeLen:0.56,bladeW:0.11,finish:M(0x3d342c,{metalness:0.6,roughness:0.45}),trim:M(0x2a2420,{metalness:0.5,roughness:0.5}),
+  bladeMat:M(0x9aa3a8,{metalness:0.6,roughness:0.35}),speed:1,speeds:[0,0.9,1.5,2.3],imb:0.2,wn:1.6,fob:woodFob});
+const fE=makeCeilingFan({name:{ja:'廊下',en:'Hallway'},short:{ja:'廊下',en:'Hallway'},x:-4.8,z:-0.9,rod:0.02,blades:4,pitch:0.24,bladeLen:0.32,bladeW:0.1,finish:M(0xe8e4dc,{roughness:0.45}),trim:M(0xbfb8ac,{roughness:0.5}),
+  bladeMat:M(0xd8cdb8,{roughness:0.6}),speed:2,speeds:[0,1.2,1.9,2.8],imb:0.15,wn:2.0,chainLen:0.25,fob:whiteFob});
+const fD=makeCeilingFan({name:{ja:'寝室',en:'Bedroom'},short:{ja:'寝室',en:'Bedroom'},x:-7.8,z:0.4,rod:0.25,blades:5,pitch:0.2,finish:M(0xb9bcbf,{metalness:0.75,roughness:0.3}),trim:M(0x8d9194,{metalness:0.6,roughness:0.35}),
+  bladeMat:M(0xd8d2c8,{roughness:0.55}),light:true,speed:1,speeds:[0,0.8,1.4,2.2],imb:0.1,wn:2.3,fob:woodFob});
+[fB,fC,fE,fD].forEach(f=>f.hasSwitch=true);
+fans.forEach(f=>{f.omega=f.speeds[f.speed];});
+
+/* ---------- wall switches (wide rockers with locator lamps) ---------- */
+const switches=[];
+function makeSwitch(x,z,ry,gangs){
+  const g=new THREE.Group();g.position.set(x,1.2,z);g.rotation.y=ry;scene.add(g);
+  const plain=M(0xf3f1eb,{roughness:0.5});
+  const face=new THREE.MeshStandardMaterial({roughness:0.5,map:canvasTex(256,288,(c,w,h)=>{c.fillStyle='#f3f1eb';c.fillRect(0,0,w,h);c.fillStyle='#7a7266';c.font='bold 22px sans-serif';c.textAlign='center';c.textBaseline='middle';gangs.forEach((gg,i)=>c.fillText(gg.label,gangs.length===1?128:(i?186:70),262));})});
+  g.add(mesh(new THREE.BoxGeometry(0.12,0.135,0.008),[plain,plain,plain,plain,face,plain],{z:0.004,cast:false}));
+  const rockerMat=M(0xfaf8f3,{roughness:0.4});
+  const sw={g,rockers:[],press:[]};
+  gangs.forEach((gg,i)=>{
+    const p=new THREE.Group();p.position.set(gangs.length===1?0:(i?1:-1)*0.027,0.008,0.009);g.add(p);
+    const r=mesh(new THREE.BoxGeometry(0.046,0.098,0.01),rockerMat,{z:0.005,cast:false});p.add(r);
+    const lampMat=new THREE.MeshStandardMaterial({color:0x2a3a2a,emissive:0x6dff8f,emissiveIntensity:0});
+    p.add(mesh(new THREE.BoxGeometry(0.012,0.004,0.002),lampMat,{y:-0.036,z:0.0105,cast:false}));
+    const press=()=>{sfx('switch',1,g.position);gg.toggle();};
+    r.userData={act:press,label:gg.tip};clickables.push(r);
+    addMarker(p,0,0.02,0.03,0.035);
+    sw.rockers.push({p,lampMat,on:gg.on});sw.press.push(press);
+  });
+  switches.push(sw);return sw;
+}
+function updateSwitches(){switches.forEach(sw=>sw.rockers.forEach(rk=>{const on=rk.on();rk.p.rotation.x+=((on?-0.12:0.12)-rk.p.rotation.x)*0.35;rk.lampMat.emissiveIntensity+=((on?0:1.2)-rk.lampMat.emissiveIntensity)*0.2;}));}
+function roomSwitch(room,fan,x,z,ry){
+  const sw=makeSwitch(x,z,ry,[
+    {label:'ファン',on:()=>fan.power,toggle:()=>{fan.power=!fan.power;},tip:()=>t('tipSwFan',fan.name,fan.power)},
+    {label:'照明',on:()=>room.on,toggle:()=>{room.on=!room.on;},tip:()=>t('tipSwRoom',room.name,room.on)}]);
+  fan.press=sw.press[0];room.press=sw.press[1];
+}
+roomSwitch(byId('living'),fB,-4+T/2+0.004,1.0,Math.PI/2);
+roomSwitch(byId('kitchen'),fC,4+T/2+0.004,1.2,Math.PI/2);
+roomSwitch(byId('hall'),fE,-4-T/2-0.004,1.0,-Math.PI/2);
+roomSwitch(byId('bed'),fD,-5.6-T/2-0.004,-1.1,-Math.PI/2);
+
+/* ---------- electric fans (扇風機) ---------- */
+const stands=[];let sel=0;
+const keySide=M(0xe6e3dc,{roughness:0.5});
+const WFALL=3.0;
+function addKeys(g,s,o){
+  SPN.forEach((kj,i)=>{
+    const c=o.colors[i===0?0:1];
+    const top=new THREE.MeshStandardMaterial({roughness:0.5,map:labelTex(kj,c[0],c[1])});
+    const side=o.side||keySide;
+    const k=mesh(new THREE.BoxGeometry(o.w,0.018,o.d),[side,side,top,side,side,side],{x:o.x0+i*o.dx,y:o.y,z:o.z,cast:false});
+    g.add(k);
+    k.userData={act:()=>{selectStand(s.idx);s.setSpeed(i);},label:()=>t('tipKey',s.name,SP(i),i>0,SP(s.speed),s.tripped)};
+    clickables.push(k);s.keys.push({m:k,up:o.y,down:o.y-0.009});
+  });
+  addMarker(g,o.x0+1.5*o.dx,o.y+0.04,o.z,0.045);
+}
+function fanCommon(s,o){
+  Object.assign(s,{speeds:o.speeds,speed:o.speed,osc:o.osc,omega:0,angle:0,offT:0,keys:[],name:o.name,short:o.short,lastRev:0,
+    imb:o.imb,wn:o.wn,zeta:0.12,kDeg:1.0,hCM:o.hcm,W:0,build:0,rockA:0,rt:rnd()*5,Tx:0,Tz:0,fallen:false,tripped:false,phase:'up',th:0,thd:0,dx:1,dz:0,bounces:0,
+    windPos:V(o.x,0.8,o.z),windDir:V(Math.sin(o.ry),0,Math.cos(o.ry)),windK:o.windK||1,windCos:o.windCos||0.8,ribbons:[]});
+  bil(s,'name',o.name);bil(s,'short',o.short);
+  s.setSpeed=i=>{sfx('key',1,s.root.position);s.speed=i;if(i===0)s.offT=0.22;};
+  s.toggleOsc=()=>{sfx('knob',1,s.root.position);s.osc=!s.osc;};
+  s.sound=()=>{const c=s.omega/16;return{lvl:0.3*c*c,cut:300+c*1400,hum:(s.omega>0.3&&!s.tripped)?0.012:0,pos:s.windPos};};
+  Object.defineProperty(s,'oscName',{get:()=>t(s.kind==='box'?'louver':'osc'),configurable:true});
+  s.idx=stands.length;stands.push(s);
+  const root=new THREE.Group();root.position.set(o.x,o.baseY||0,o.z);root.rotation.y=o.ry;scene.add(root);s.root=root;
+  const tilt=new THREE.Group();root.add(tilt);s.tilt=tilt;
+  return V(Math.sin(o.ry),0,Math.cos(o.ry));
+}
+function bladeGeo(cw,R){
+  const sh=new THREE.Shape();
+  sh.moveTo(0.03,-0.02);sh.bezierCurveTo(0.09,-0.095*cw,R,-0.075*cw,R,0.0);sh.bezierCurveTo(R,0.07*cw,0.1,0.07*cw,0.03,0.025);
+  return new THREE.ShapeGeometry(sh,12);
+}
+function bladeMatFor(s,o){
+  s.bladeOp=o.bladeOp;
+  s.bladeMat=new THREE.MeshStandardMaterial({color:o.bladeColor,roughness:o.bladeRough||0.3,metalness:o.bladeMetal||0,transparent:true,opacity:o.bladeOp,side:THREE.DoubleSide,depthWrite:false});
+}
+function spin(s,dt){
+  const tgt=s.tripped?0:s.speeds[s.speed],tau=tgt>s.omega?0.9:2.8;
+  s.omega+=(tgt-s.omega)*(1-Math.exp(-dt/tau));
+  s.angle+=s.omega*2*Math.PI*dt;
+  if(s.spinAxis==='y')s.rotor.rotation.y=-s.angle;else s.rotor.rotation.z=-s.angle;
+  const b=clamp(s.omega/8,0,1);s.bladeMat.opacity=s.bladeOp*(1-0.72*b);if(s.disc)s.disc.material.opacity=0.3*b;
+  if(s.offT>0)s.offT-=dt;
+  s.keys.forEach((k,i)=>{const dn=i===0?s.offT>0:s.speed===i;k.m.position.y+=((dn?k.down:k.up)-k.m.position.y)*0.4;});
+}
+function windFrom(s,obj){obj.getWorldPosition(s.windPos);s.windDir.set(0,0,1).transformDirection(obj.matrixWorld);s.windDir.y=0;s.windDir.normalize();}
+function wireGrille(parent,R,z0,dome,mat){
+  const pts=[],zf=r=>z0+dome*(1-(r/R)**2);
+  for(let i=0;i<28;i++){const a=i/28*Math.PI*2;for(let k=0;k<6;k++){const r1=0.035+k*(R-0.035)/6,r2=0.035+(k+1)*(R-0.035)/6;pts.push(Math.cos(a)*r1,Math.sin(a)*r1,zf(r1),Math.cos(a)*r2,Math.sin(a)*r2,zf(r2));}}
+  [R*0.34,R*0.58,R*0.8].forEach(r=>{for(let i=0;i<48;i++){const a1=i/48*Math.PI*2,a2=(i+1)/48*Math.PI*2;pts.push(Math.cos(a1)*r,Math.sin(a1)*r,zf(r),Math.cos(a2)*r,Math.sin(a2)*r,zf(r));}});
+  const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pts,3));
+  parent.add(new THREE.LineSegments(geo,mat));
+}
+// paper ribbons tied to the guard: hang down when off, stream forward in the airflow
+function addRibbons(s,head){
+  [['#d94f3d',-0.55],['#f0c040',0],['#4f8fd9',0.55]].forEach(([col,a])=>{
+    const N=12,pos=new Float32Array(N*6),geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    const idx=[];for(let i=0;i<N-1;i++){const b=i*2;idx.push(b,b+1,b+2,b+1,b+3,b+2);}geo.setIndex(idx);
+    const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:col,side:THREE.DoubleSide}));m.frustumCulled=false;head.add(m);
+    s.ribbons.push({geo,pos,N,ax:Math.sin(a)*0.19,ay:0.02+Math.cos(a)*0.19,az:0.09,ph:rnd()*6});
+  });
+}
+function updateRibbons(s,t){
+  const k=clamp(s.omega/s.speeds[3],0,1),L=0.3,hw=0.011;
+  s.ribbons.forEach(r=>{
+    for(let i=0;i<r.N;i++){
+      const u=i/(r.N-1),kk=k*(1-0.35*u*(1-k));
+      let dy=-(1-kk),dz=kk+0.05;const n=Math.hypot(dy,dz);dy/=n;dz/=n;
+      const fl=Math.sin(t*(8+30*k)+u*9+r.ph)*0.02*k*u,fl2=Math.sin(t*(6+22*k)+u*7+r.ph*1.3)*0.012*k*u;
+      const x=r.ax+fl,y=r.ay+dy*u*L+fl2,z=r.az+dz*u*L,o=i*6;
+      r.pos[o]=x-hw;r.pos[o+1]=y;r.pos[o+2]=z;r.pos[o+3]=x+hw;r.pos[o+4]=y;r.pos[o+5]=z;
+    }
+    r.geo.attributes.position.needsUpdate=true;
+  });
+}
+
+/* ---- fan wobble & tip-over ----
+   W: vibration of the whole fan from its rotating unbalance (forced response, resonance near wn).
+   Rocking on the base grows with W; past the tip line it keeps growing until the tilt passes the
+   critical angle atan(base support / centre-of-mass height), then gravity takes over (rocking-block model).
+   Where it lands is limited by furniture, walls and other fans in the way. */
+const qT=new THREE.Quaternion(),axT=V(0,1,0),PT=V(),PT2=V();
+function thetaC(s,dx,dz){return Math.atan(s.support(dx,dz)/s.hCM);}
+function applyTilt(s){
+  const th=Math.hypot(s.Tx,s.Tz);
+  if(th<1e-7){s.tilt.quaternion.identity();s.tilt.position.set(0,0,0);return;}
+  const dx=s.Tx/th,dz=s.Tz/th,ext=s.support(dx,dz);
+  axT.set(dz,0,-dx);qT.setFromAxisAngle(axT,th);s.tilt.quaternion.copy(qT);
+  PT.set(dx*ext,0,dz*ext);PT2.copy(PT).applyQuaternion(qT);s.tilt.position.copy(PT).sub(PT2); // pivot on the base edge
+}
+function wobble(s,dt,yaw,fwdK){
+  const r=s.omega/s.wn,ratio=r*r/Math.sqrt((1-r*r)**2+(2*s.zeta*r)**2),ph=Math.atan2(2*s.zeta*r,1-r*r);
+  s.W+=((s.fallen?0:s.imb*s.kDeg*ratio)-s.W)*(1-Math.exp(-dt/0.4));
+  if(s.fallen){fallStep(s,dt);applyTilt(s);return;}
+  s.build=clamp(s.build+(s.W>WFALL?dt/1.3:-dt),0,1);
+  const lx=Math.cos(yaw),lz=-Math.sin(yaw),fx=Math.sin(yaw),fz=Math.cos(yaw);
+  const c=thetaC(s,lx,lz),base=Math.min(0.6*c,6*D2R);
+  s.rockA+=((base*Math.min(1,(s.W/WFALL)**2)+s.build*(1.15*c-base))-s.rockA)*(1-Math.exp(-dt/0.3));
+  s.rt+=dt;
+  const rk=s.rockA*Math.sin(2*Math.PI*2.2*s.rt),rk2=s.rockA*fwdK*Math.sin(2*Math.PI*3.0*s.rt);
+  const b=s.angle-ph,hf=s.W*D2R;
+  const vl=hf*Math.sin(b)+rk,vf=hf*0.35*Math.cos(b)+rk2;
+  s.Tx=vl*lx+vf*fx;s.Tz=vl*lz+vf*fz;
+  const th=Math.hypot(s.Tx,s.Tz);
+  if(s.build>0.5&&th>1e-6&&th>=thetaC(s,s.Tx/th,s.Tz/th))startFall(s,th);
+  applyTilt(s);
+}
+function rayBox(px,pz,dx,dz,o){
+  let t0=0,t1=Infinity;
+  for(const [p,d,a,b] of [[px,dx,o.x0,o.x1],[pz,dz,o.z0,o.z1]]){
+    if(Math.abs(d)<1e-9){if(p<a||p>b)return null;}
+    else{let ta=(a-p)/d,tb=(b-p)/d;if(ta>tb)[ta,tb]=[tb,ta];t0=Math.max(t0,ta);t1=Math.min(t1,tb);if(t0>t1)return null;}
+  }
+  return t0;
+}
+function rayWall(px,pz,dx,dz,w){
+  if(w.az===w.bz){if(Math.abs(dz)<1e-6)return null;const t=(w.az-pz)/dz;if(t<0)return null;const x=px+dx*t;if(x<Math.min(w.ax,w.bx)||x>Math.max(w.ax,w.bx))return null;return Math.max(0,t-(T/2)/Math.abs(dz));}
+  if(Math.abs(dx)<1e-6)return null;const t=(w.ax-px)/dx;if(t<0)return null;const z=pz+dz*t;if(z<Math.min(w.az,w.bz)||z>Math.max(w.az,w.bz))return null;return Math.max(0,t-(T/2)/Math.abs(dx));
+}
+function fallLimit(s){
+  const ry=s.root.rotation.y,c=Math.cos(ry),sn=Math.sin(ry);
+  const wx=s.dx*c+s.dz*sn,wz=-s.dx*sn+s.dz*c,ext=s.support(s.dx,s.dz),b=s.root.position;
+  const px=b.x+wx*ext,pz=b.z+wz*ext,by=b.y;
+  let lim=s.thEnd0;
+  const test=(dist,h)=>{const d=dist-s.rg;if(d<=0.01){lim=Math.min(lim,0.12);return;}
+    if(isFinite(h)&&s.Lf>=Math.hypot(d,h))lim=Math.min(lim,Math.atan2(d,h)); // leans on the top edge
+    else if(s.Lf>d)lim=Math.min(lim,Math.asin(d/s.Lf));};                // tip hits the side
+  obstacles.forEach(o=>{if(o.top<=by+0.02)return;const t=rayBox(px,pz,wx,wz,o);if(t!==null)test(t,o.top-by);});
+  wallSegs.forEach(w=>{const t=rayWall(px,pz,wx,wz,w);if(t!==null)test(t,Infinity);});
+  stands.forEach(o=>{if(o===s)return;const q=o.root.position,rx=q.x-px,rz=q.z-pz,along=rx*wx+rz*wz;if(along<=0)return;if(Math.abs(rx*wz-rz*wx)>0.24)return;test(along-0.15,o.headH*0.9+q.y-by);});
+  return lim;
+}
+function startFall(s,th){
+  Object.assign(s,{fallen:true,tripped:true,phase:'falling',dx:s.Tx/th,dz:s.Tz/th,th,thd:0.8,build:0,rockA:0,bounces:0});
+  s.thEnd=Math.max(th+0.03,fallLimit(s));
+  if(!clickables.includes(s.fallHit))clickables.push(s.fallHit);
+  showToast(t('toastStandDown',s.name));
+}
+function fallStep(s,dt){
+  const ext=s.support(s.dx,s.dz),c=Math.atan(ext/s.hCM),R=Math.hypot(ext,s.hCM),p2=0.75*9.8/R;
+  if(s.phase==='falling'){
+    for(let i=0;i<4;i++){const h=dt/4;s.thd+=p2*Math.sin(s.th-c)*h;s.th+=s.thd*h;
+      if(s.th>=s.thEnd){s.th=s.thEnd;sfx('thud',s.bounces===0?1:0.35,s.root.position);s.bounces++;s.thd=-0.28*Math.abs(s.thd);
+        if(Math.abs(s.thd)<0.15||s.bounces>3){s.phase='down';s.thd=0;break;}}}
+  }else if(s.phase==='raising'){
+    s.th=Math.max(0,s.th-dt*1.4);
+    if(s.th<=0)Object.assign(s,{fallen:false,tripped:false,phase:'up',W:0});
+  }
+  s.Tx=s.dx*s.th;s.Tz=s.dz*s.th;
+}
+function raise(s){
+  if(!s.fallen||s.phase==='raising')return;
+  sfx('knob',1,s.root.position);s.speed=0;s.offT=0.22;s.phase='raising';
+  const i=clickables.indexOf(s.fallHit);if(i>=0)clickables.splice(i,1);
+}
+function addFallHit(s,g,y){
+  s.fallHit=mesh(new THREE.SphereGeometry(0.3,10,8),hitMat,{y,cast:false});g.add(s.fallHit);
+  s.fallHit.userData={act:()=>{selectStand(s.idx);raise(s);},label:()=>t('tipStandDown',s.name)};
+}
+
+// pedestal / desk fan: piano keys on the base, oscillation knob on the motor
+function makeStandFan(o){
+  const s={kind:'stand',oscPh:o.ph||0,bent:o.bent||0};
+  const f=fanCommon(s,o);
+  const by=o.baseY||0,sc=o.scale||1,body=o.body;
+  const g=new THREE.Group();g.scale.setScalar(sc);s.tilt.add(g);
+  const rb=0.19*sc;s.support=()=>rb;
+  s.thEnd0=Math.PI/2-Math.atan(0.205/(0.07+o.pole)); // lies on the guard rim and the base edge
+  s.headH=(0.07+o.pole)*sc;s.Lf=s.headH;s.rg=0.205*sc;
+  g.add(mesh(new THREE.CylinderGeometry(0.18,0.19,0.045,40),body,{y:0.0225,recv:true}));
+  g.add(mesh(new THREE.BoxGeometry(0.2,0.03,0.09),o.panel,{y:0.055,z:0.07}));
+  addKeys(g,s,{y:0.078,z:0.078,x0:-0.066,dx:0.044,w:0.038,d:0.06,colors:o.keyColors,side:o.keySide});
+  g.add(mesh(new THREE.CylinderGeometry(0.016,0.02,o.pole,16),body,{y:0.05+o.pole/2}));
+  const yaw=new THREE.Group();yaw.position.y=0.05+o.pole;g.add(yaw);
+  const head=new THREE.Group();head.rotation.x=0.06;yaw.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.03,16,12),body));
+  head.add(mesh(new THREE.CylinderGeometry(0.066,0.07,0.14,32),body,{y:0.02,z:-0.03,rx:Math.PI/2}));
+  head.add(mesh(new THREE.SphereGeometry(0.066,24,12,0,Math.PI*2,0,Math.PI/2),body,{y:0.02,z:-0.1,rx:-Math.PI/2}));
+  const knob=new THREE.Group();knob.position.set(0,0.072,-0.05);head.add(knob);
+  knob.add(mesh(new THREE.CylinderGeometry(0.012,0.014,0.03,16),M(0x8e979e,{metalness:0.4,roughness:0.4}),{y:0.015}));
+  const kh=mesh(new THREE.SphereGeometry(coarse?0.05:0.035,8,6),hitMat,{y:0.015,cast:false});knob.add(kh);
+  kh.userData={act:()=>{selectStand(s.idx);s.toggleOsc();},label:()=>t('tipKnob',s.name,s.osc)};clickables.push(kh);
+  addMarker(knob,0,0.05,0,0.035);
+  const rotor=new THREE.Group();rotor.position.set(0,0.02,0.07);head.add(rotor);s.rotor=rotor;
+  rotor.add(mesh(new THREE.CylinderGeometry(0.035,0.035,0.035,24),o.hubMat,{rx:Math.PI/2}));
+  bladeMatFor(s,o);
+  const bg=bladeGeo(o.bladeWidth||1,0.19);
+  for(let i=0;i<o.blades;i++){const a=new THREE.Group();a.rotation.z=i/o.blades*Math.PI*2;rotor.add(a);a.add(mesh(bg,s.bladeMat,{rx:(i===0&&s.bent)?0.8:0.35}));}
+  s.disc=mesh(new THREE.CircleGeometry(0.19,48),new THREE.MeshBasicMaterial({color:o.discColor||0xc4dcee,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}),{y:0.02,z:0.07,cast:false});head.add(s.disc);
+  head.add(mesh(new THREE.TorusGeometry(0.205,0.006,8,64),o.rim||body,{y:0.02,z:0.075}));
+  const wire=new THREE.LineBasicMaterial({color:o.wire});
+  const grl=new THREE.Group();grl.position.y=0.02;head.add(grl);
+  wireGrille(grl,0.205,0.078,0.05,wire);wireGrille(grl,0.205,0.045,-0.025,wire);
+  head.add(mesh(new THREE.CircleGeometry(0.034,32),M(o.badge,{roughness:0.4}),{y:0.02,z:0.129,cast:false}));
+  addRibbons(s,head);
+  addFallHit(s,g,0.07+o.pole);
+  const headY=by+(0.07+o.pole)*sc;
+  s.cam=[[o.x+f.x*1.15,headY+0.2,o.z+f.z*1.15],[o.x,(by+headY)/2,o.z]];
+  s.update=(dt,t)=>{
+    spin(s,dt);
+    if(s.osc&&!s.fallen)s.oscPh+=dt*(2*Math.PI/(o.oscPeriod||12))*clamp(s.omega/9,0,1); // oscillation gear runs off the motor
+    yaw.rotation.y=(o.oscRange||0.75)*Math.sin(s.oscPh);
+    knob.position.y+=((s.osc?0.058:0.072)-knob.position.y)*0.3;
+    if(s.bent){ // bent blade: the whole head shakes once per revolution, harder as speed rises
+      const j=s.bent*clamp(s.omega/16,0,1)**2;
+      head.rotation.x=0.06+j*Math.sin(s.angle);head.rotation.y=0.6*j*Math.cos(s.angle);
+      const rev=Math.floor(s.angle/(4*Math.PI));if(rev!==s.lastRev){s.lastRev=rev;if(s.omega>4)sfx('rattle',s.omega/16,s.windPos);}
+    }
+    wobble(s,dt,yaw.rotation.y,0.3);
+    windFrom(s,head);updateRibbons(s,t);
+  };
+  return s;
+}
+
+// box fan: square frame, keys on top, rotating louver instead of oscillation
+function makeBoxFan(o){
+  const s={kind:'box',louver:0};
+  const f=fanCommon(s,o);
+  const g=new THREE.Group();s.tilt.add(g);
+  s.support=(dx,dz)=>0.18*Math.abs(dx)+0.11*Math.abs(dz); // rectangle of the two feet
+  s.thEnd0=Math.PI/2-0.1;s.headH=0.27;s.Lf=0.49;s.rg=0.03;
+  addFallHit(s,g,0.27);
+  const body=o.body,S=0.44,TT=0.035,Dp=0.15,cy=0.27;
+  [[0,cy+S/2-TT/2,S,TT],[0,cy-S/2+TT/2,S,TT],[-S/2+TT/2,cy,TT,S],[S/2-TT/2,cy,TT,S]].forEach(([x,y,w,h])=>g.add(mesh(new THREE.BoxGeometry(w,h,Dp),body,{x,y})));
+  [-0.15,0.15].forEach(x=>g.add(mesh(new THREE.BoxGeometry(0.06,0.05,0.22),body,{x,y:0.025})));
+  const wire=new THREE.LineBasicMaterial({color:o.wire});
+  const back=new THREE.Group();back.position.y=cy;g.add(back);wireGrille(back,0.19,-0.065,0,wire);
+  const rotor=new THREE.Group();rotor.position.set(0,cy,-0.012);g.add(rotor);s.rotor=rotor;
+  rotor.add(mesh(new THREE.CylinderGeometry(0.035,0.035,0.03,24),o.louverMat,{rx:Math.PI/2}));
+  bladeMatFor(s,o);
+  const bg=bladeGeo(0.8,0.18);
+  for(let i=0;i<5;i++){const a=new THREE.Group();a.rotation.z=i/5*Math.PI*2;rotor.add(a);a.add(mesh(bg,s.bladeMat,{rx:0.4}));}
+  s.disc=mesh(new THREE.CircleGeometry(0.18,48),new THREE.MeshBasicMaterial({color:o.discColor,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}),{y:cy,z:-0.012,cast:false});g.add(s.disc);
+  const lv=new THREE.Group();lv.position.set(0,cy,0.055);g.add(lv);
+  lv.add(mesh(new THREE.TorusGeometry(0.19,0.008,8,64),o.louverMat));
+  lv.add(mesh(new THREE.CylinderGeometry(0.04,0.04,0.02,24),o.louverMat,{rx:Math.PI/2}));
+  for(let i=0;i<8;i++){const v=new THREE.Group();v.rotation.z=i/8*Math.PI*2;lv.add(v);v.add(mesh(new THREE.BoxGeometry(0.15,0.004,0.035),o.louverMat,{x:0.11,rx:0.7,cast:false}));}
+  const topY=cy+S/2;
+  g.add(mesh(new THREE.BoxGeometry(0.26,0.012,0.09),o.panel,{x:-0.02,y:topY+0.006,cast:false}));
+  addKeys(g,s,{y:topY+0.018,z:0,x0:-0.12,dx:0.042,w:0.036,d:0.06,colors:o.keyColors});
+  const lbY=topY+0.016;
+  const lb=mesh(new THREE.CylinderGeometry(coarse?0.03:0.017,coarse?0.03:0.017,0.014,20),M(0x5f88ab,{roughness:0.45}),{x:0.075,y:lbY,cast:false});g.add(lb);
+  lb.userData={act:()=>{selectStand(s.idx);s.toggleOsc();},label:()=>t('tipLouver',s.name,s.osc)};clickables.push(lb);
+  addMarker(g,0.075,lbY+0.035,0,0.035);
+  s.cam=[[o.x+f.x*1.05,0.78,o.z+f.z*1.05],[o.x,0.32,o.z]];
+  s.update=(dt)=>{
+    spin(s,dt);
+    if(s.osc&&!s.fallen)s.louver+=dt*(2*Math.PI/5)*clamp(s.omega/6,0,1);
+    lv.rotation.z=s.louver;
+    lb.position.y+=((s.osc?lbY-0.005:lbY)-lb.position.y)*0.3;
+    wobble(s,dt,0,0.5);
+    windFrom(s,rotor);
+  };
+  return s;
+}
+
+// tower fan: tall column with a cross-flow impeller behind vertical slats
+function makeTowerFan(o){
+  const s={kind:'tower',oscPh:o.ph||0,spinAxis:'y'};
+  const f=fanCommon(s,o);
+  const g=new THREE.Group();s.tilt.add(g);
+  s.support=()=>0.16;s.thEnd0=Math.PI/2-Math.atan(0.1/0.95);s.headH=0.5;s.Lf=0.9;s.rg=0.1;
+  addFallHit(s,g,0.5);
+  const body=o.body,dark=o.dark;
+  g.add(mesh(new THREE.CylinderGeometry(0.16,0.17,0.035,40),body,{y:0.0175,recv:true}));
+  g.add(mesh(new THREE.CylinderGeometry(0.04,0.05,0.05,20),dark,{y:0.06}));
+  const yaw=new THREE.Group();yaw.position.y=0.085;g.add(yaw);
+  yaw.add(mesh(new THREE.BoxGeometry(0.2,0.8,0.025),body,{y:0.42,z:-0.07}));
+  [-0.09,0.09].forEach(x=>yaw.add(mesh(new THREE.BoxGeometry(0.02,0.8,0.15),body,{x,y:0.42,z:0.005})));
+  yaw.add(mesh(new THREE.BoxGeometry(0.2,0.06,0.17),body,{y:0.85}));
+  yaw.add(mesh(new THREE.BoxGeometry(0.2,0.04,0.17),body,{y:0.02}));
+  for(let i=0;i<10;i++)yaw.add(mesh(new THREE.BoxGeometry(0.008,0.74,0.012),dark,{x:-0.072+i*0.016,y:0.42,z:0.075,cast:false}));
+  const rotor=new THREE.Group();rotor.position.set(0,0.42,0);yaw.add(rotor);s.rotor=rotor;
+  bladeMatFor(s,o);
+  for(let i=0;i<12;i++){const a=i/12*Math.PI*2,v=new THREE.Group();v.rotation.y=a;rotor.add(v);v.add(mesh(new THREE.BoxGeometry(0.004,0.72,0.04),s.bladeMat,{x:0.045,ry:0.5,cast:false}));}
+  addKeys(yaw,s,{y:0.889,z:0.02,x0:-0.075,dx:0.034,w:0.03,d:0.05,colors:o.keyColors,side:o.keySide});
+  const ob=mesh(new THREE.CylinderGeometry(coarse?0.022:0.013,coarse?0.022:0.013,0.012,20),M(0xd9a35b,{roughness:0.45}),{x:0.072,y:0.887,z:0.02,cast:false});yaw.add(ob);
+  ob.userData={act:()=>{selectStand(s.idx);s.toggleOsc();},label:()=>t('tipTowerOsc',s.name,s.osc)};clickables.push(ob);
+  addMarker(yaw,0.072,0.92,0.02,0.03);
+  s.cam=[[o.x+f.x*1.25,1.15,o.z+f.z*1.25],[o.x,0.6,o.z]];
+  s.update=(dt)=>{
+    spin(s,dt);
+    if(s.osc&&!s.fallen)s.oscPh+=dt*(2*Math.PI/10)*clamp(s.omega/10,0,1);
+    yaw.rotation.y=0.6*Math.sin(s.oscPh);
+    ob.position.y+=((s.osc?0.882:0.887)-ob.position.y)*0.3;
+    wobble(s,dt,yaw.rotation.y,0.45);
+    windFrom(s,rotor);
+  };
+  return s;
+}
+
+makeStandFan({name:{ja:'白いリビング扇',en:'White living-room fan'},short:{ja:'白',en:'White'},x:2.4,z:-1.6,ry:-0.59,pole:0.75,body:M(0xeceae4,{roughness:0.45}),panel:M(0xd9d6cf,{roughness:0.5}),
+  keyColors:[['#c95b4a','#ffffff'],['#dfe7ee','#2b3a48']],hubMat:M(0x9ec3e0,{roughness:0.35}),blades:3,bladeColor:0x9ec3e0,bladeOp:0.8,
+  wire:0xd6d6d2,badge:0x5f88ab,speeds:[0,9,12.5,16],speed:1,osc:true,ph:0.6,imb:0.2,wn:13,hcm:0.43});
+makeStandFan({name:{ja:'昭和の卓上扇',en:'Shōwa desk fan'},short:{ja:'昭和',en:'Shōwa'},x:-2.6,z:-1.9,ry:0.83,baseY:0.33,scale:0.82,pole:0.28,body:M(0x9fcdb7,{roughness:0.35,metalness:0.15}),panel:M(0xe9e2cf,{roughness:0.5}),
+  keyColors:[['#b8423a','#fff5e6'],['#f1e9d6','#4a4035']],keySide:M(0xf1e9d6,{roughness:0.5}),hubMat:M(0xc9ced0,{metalness:0.8,roughness:0.25}),
+  blades:4,bladeColor:0x9fcdb7,bladeMetal:0.4,bladeRough:0.35,bladeOp:1,bladeWidth:1.15,discColor:0xbfe0d0,rim:M(0xd8dcde,{metalness:0.9,roughness:0.2}),
+  wire:0xc9cfd2,badge:0xb8423a,speeds:[0,10,14,18],speed:2,osc:false,oscRange:0.6,oscPeriod:9,imb:0.3,wn:15,hcm:0.16});
+makeStandFan({name:{ja:'黒い扇風機（羽根曲がり）',en:'Black fan (bent blade)'},short:{ja:'黒',en:'Black'},x:3.1,z:1.6,ry:-2.05,pole:0.88,body:M(0x2f3236,{roughness:0.4}),panel:M(0x3a3d42,{roughness:0.5}),
+  keyColors:[['#b8483c','#ffffff'],['#45494f','#e8e4dc']],keySide:M(0x3a3d42,{roughness:0.5}),hubMat:M(0x45494f,{roughness:0.4}),
+  blades:5,bladeColor:0x6a737c,bladeOp:0.85,bladeWidth:0.85,discColor:0x8a939c,wire:0x5a5f66,badge:0xd9a35b,speeds:[0,8.5,12,15.5],speed:3,osc:true,ph:2.0,bent:0.045,imb:0.7,wn:14,hcm:0.5});
+makeBoxFan({name:{ja:'ボックス扇',en:'Box fan'},short:{ja:'ボックス',en:'Box'},x:-3.0,z:2.2,ry:2.09,body:M(0xf2efe8,{roughness:0.5}),panel:M(0xdcd8cf,{roughness:0.5}),
+  keyColors:[['#c95b4a','#ffffff'],['#e6eef3','#2b3a48']],louverMat:M(0xe8e5de,{roughness:0.5}),bladeColor:0xdde3e8,bladeOp:0.85,discColor:0xe3e9ee,
+  wire:0xd0d0cc,speeds:[0,7,10,13],speed:1,osc:true,imb:0.15,wn:9,hcm:0.27,windCos:0.7,windK:0.9});
+makeTowerFan({name:{ja:'寝室のタワーファン',en:'Bedroom tower fan'},short:{ja:'タワー',en:'Tower'},x:-6.3,z:1.9,ry:-2.15,body:M(0xdedbd4,{roughness:0.45}),dark:M(0x3a3c40,{roughness:0.5}),
+  keyColors:[['#b8483c','#ffffff'],['#4a4d52','#e8e4dc']],keySide:M(0x4a4d52,{roughness:0.5}),bladeColor:0x9aa0a6,bladeOp:1,
+  speeds:[0,13,17,21],speed:2,osc:true,imb:0.25,wn:16,hcm:0.4,windK:0.8,windCos:0.82});
+stands.forEach(t=>{t.omega=t.speeds[t.speed];});
+function selectStand(i){sel=i;showSec('s');refreshPanel();}
+function selectFan(i){csel=i;showSec('c');refreshPanel();}
+
+/* ---------- kitchen exhaust fan (換気扇) with a pull cord ---------- */
+const kanki={speed:1,omega:0,angle:0,speeds:[0,16,22]};
+(function(){
+  const g=new THREE.Group();g.position.set(8-T/2-0.004,2.0,-2.3);g.rotation.y=-Math.PI/2;scene.add(g);kanki.g=g;
+  const frame=M(0xeeebe4,{roughness:0.5}),S=0.38,TT=0.04;
+  [[0,S/2-TT/2,S,TT],[0,-S/2+TT/2,S,TT],[-S/2+TT/2,0,TT,S],[S/2-TT/2,0,TT,S]].forEach(([x,y,w,h])=>g.add(mesh(new THREE.BoxGeometry(w,h,0.08),frame,{x,y,z:0.04})));
+  g.add(mesh(new THREE.PlaneGeometry(S-2*TT,S-2*TT),M(0x2f2b28,{roughness:0.9}),{z:0.003,cast:false}));
+  const rotor=new THREE.Group();rotor.position.z=0.045;g.add(rotor);kanki.rotor=rotor;
+  rotor.add(mesh(new THREE.CylinderGeometry(0.04,0.04,0.03,20),frame,{rx:Math.PI/2}));
+  const bg=bladeGeo(1.2,0.15),bm=M(0xd9d6cf,{roughness:0.4,side:THREE.DoubleSide});
+  for(let i=0;i<4;i++){const a=new THREE.Group();a.rotation.z=i/4*Math.PI*2;rotor.add(a);a.add(mesh(bg,bm,{rx:0.45}));}
+  const gr=new THREE.Group();g.add(gr);wireGrille(gr,0.15,0.085,0,new THREE.LineBasicMaterial({color:0xcfcac2}));
+  kanki.chain=makeChain(g,{x:S/2-0.03,y:-S/2,z:0.05,len:0.42,beadMat:M(0xf2efe8,{roughness:0.8}),
+    fob:()=>mesh(new THREE.CylinderGeometry(0.012,0.012,0.04,12),M(0xd9a35b,{roughness:0.5}),{cast:false}),
+    onPull:()=>{kanki.speed=kanki.speed===0?2:kanki.speed-1;},label:()=>t('tipKanki',t('kk')[kanki.speed])});
+  kanki.sound=()=>{const c=kanki.omega/22;return{lvl:0.35*c*c,cut:400+c*1600,hum:kanki.omega>0.3?0.014:0,pos:g.position};};
+  kanki.omega=kanki.speeds[kanki.speed];
+})();
+function updateKanki(dt){const tgt=kanki.speeds[kanki.speed],tau=tgt>kanki.omega?0.6:2;kanki.omega+=(tgt-kanki.omega)*(1-Math.exp(-dt/tau));kanki.angle+=kanki.omega*2*Math.PI*dt;kanki.rotor.rotation.z=-kanki.angle;}
+
+/* ---------- spatial sound (Web Audio, synthesized, positioned at each fan) ---------- */
+let A=null;
+function setPos(p,v){if(p.positionX){p.positionX.value=v.x;p.positionY.value=v.y;p.positionZ.value=v.z;}else p.setPosition(v.x,v.y,v.z);}
+function startAudio(){
+  const Ctx=window.AudioContext||window.webkitAudioContext;if(!Ctx)return null;
+  const ctx=new Ctx(),master=ctx.createGain();master.gain.value=0.9;master.connect(ctx.destination);
+  const n=ctx.sampleRate*2,brown=ctx.createBuffer(1,n,ctx.sampleRate),bd=brown.getChannelData(0);let last=0;
+  for(let i=0;i<n;i++){last=(last+0.02*(Math.random()*2-1))/1.02;bd[i]=last*3.5;}
+  const white=ctx.createBuffer(1,ctx.sampleRate*0.5,ctx.sampleRate),wd=white.getChannelData(0);for(let i=0;i<wd.length;i++)wd[i]=Math.random()*2-1;
+  const panner=()=>{const p=ctx.createPanner();p.panningModel='HRTF';p.distanceModel='inverse';p.refDistance=1;p.rolloffFactor=1.3;p.maxDistance=40;p.connect(master);return p;};
+  function voice(){const p=panner(),s=ctx.createBufferSource();s.buffer=brown;s.loop=true;const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=300;const g=ctx.createGain();g.gain.value=0;s.connect(f);f.connect(g);g.connect(p);s.start(0,Math.random()*1.5);
+    const o=ctx.createOscillator();o.frequency.value=120;const og=ctx.createGain();og.gain.value=0;o.connect(og);og.connect(p);o.start();return{f,g,og,p};} // 120 Hz hum = 2× the 60 Hz mains in central Japan
+  function hit(freq,dur,gain,when,pos){const s=ctx.createBufferSource();s.buffer=white;const f=ctx.createBiquadFilter();f.type='bandpass';f.frequency.value=freq;f.Q.value=4;const g=ctx.createGain();const t=ctx.currentTime+(when||0);
+    g.gain.setValueAtTime(gain,t);g.gain.exponentialRampToValueAtTime(0.0001,t+dur);s.connect(f);f.connect(g);
+    if(pos){const p=panner();setPos(p,pos);g.connect(p);setTimeout(()=>{try{p.disconnect();}catch(e){}},((when||0)+dur)*1000+400);}else g.connect(master);
+    s.start(t);s.stop(t+dur+0.02);}
+  const voices=new Map();[...fans,...stands,kanki].forEach(o=>voices.set(o,voice()));
+  return{ctx,on:true,hit,voices};
+}
+function sfx(kind,amt,pos){
+  if(!A||!A.on)return;amt=amt||1;const P=pos?pos.clone():null;
+  if(kind==='switch'){A.hit(2600,0.04,0.9,0,P);A.hit(900,0.06,0.45,0,P);}
+  else if(kind==='chain'){A.hit(3400,0.03,0.5,0,P);A.hit(2200,0.05,0.45,0.28,P);}
+  else if(kind==='key'){A.hit(1400,0.05,0.9,0,P);A.hit(500,0.08,0.45,0,P);}
+  else if(kind==='knob'){A.hit(1900,0.04,0.6,0,P);}
+  else if(kind==='thud'){A.hit(140,0.3,1.5*amt,0,P);A.hit(420,0.14,0.9*amt,0,P);A.hit(1800,0.05,0.5*amt,0,P);}
+  else if(kind==='crash'){A.hit(90,0.5,1.8,0,P);A.hit(300,0.25,1.2,0,P);A.hit(2500,0.15,0.8,0,P);A.hit(4200,0.3,0.45,0.05,P);}
+  else if(kind==='snap'){A.hit(3000,0.04,1.0,0,P);A.hit(1200,0.08,0.6,0,P);}
+  else if(kind==='rattle'){A.hit(2600,0.02,0.12*amt,0,P);}
+  else if(kind==='clack'){A.hit(700,0.07,0.35*amt,0,P);A.hit(1700,0.03,0.2*amt,0,P);}
+}
+function updateAudio(){
+  if(!A||!A.on)return;const t=A.ctx.currentTime,L=A.ctx.listener;
+  camera.getWorldDirection(tmpD);const c=camera.position;
+  if(L.positionX){L.positionX.value=c.x;L.positionY.value=c.y;L.positionZ.value=c.z;L.forwardX.value=tmpD.x;L.forwardY.value=tmpD.y;L.forwardZ.value=tmpD.z;L.upX.value=0;L.upY.value=1;L.upZ.value=0;}
+  else{L.setPosition(c.x,c.y,c.z);L.setOrientation(tmpD.x,tmpD.y,tmpD.z,0,1,0);}
+  A.voices.forEach((v,o)=>{const st=o.sound();v.g.gain.setTargetAtTime(st.lvl,t,0.15);v.f.frequency.setTargetAtTime(st.cut,t,0.15);v.og.gain.setTargetAtTime(st.hum,t,0.2);setPos(v.p,st.pos);});
+}
+$('snd').addEventListener('click',()=>{
+  if(!A){A=startAudio();if(!A){$('snd').textContent=t('noAudio');$('snd').disabled=true;return;}}
+  else{A.on=!A.on;if(A.on)A.ctx.resume();else A.ctx.suspend();}
+  $('snd').classList.toggle('on',A.on);$('snd').setAttribute('aria-pressed',String(A.on));
+});
+
+/* ---------- modes: look around / walk / film ---------- */
+let mode='orbit',orbitRoom=byId('living'),tw=null;
+const walk={yaw:0,pitch:0,pos:V(),keys:{},joy:{x:0,y:0},bob:0};
+const PR=0.25;
+function collide(p){
+  for(let it=0;it<2;it++){
+    wallSegs.forEach(w=>{const dx=w.bx-w.ax,dz=w.bz-w.az,l2=dx*dx+dz*dz;const u=clamp(((p.x-w.ax)*dx+(p.z-w.az)*dz)/l2,0,1);
+      const cx=w.ax+dx*u,cz=w.az+dz*u;let ox=p.x-cx,oz=p.z-cz;const d=Math.hypot(ox,oz),m=PR+T/2;
+      if(d<m){if(d<1e-6){ox=1;oz=0;}else{ox/=d;oz/=d;}p.x=cx+ox*m;p.z=cz+oz*m;}});
+    obstacles.forEach(o=>{if(o.top<0.25)return;const cx=clamp(p.x,o.x0,o.x1),cz=clamp(p.z,o.z0,o.z1),ox=p.x-cx,oz=p.z-cz,d=Math.hypot(ox,oz);
+      if(d<PR){if(d<1e-6){const dl=[p.x-o.x0,o.x1-p.x,p.z-o.z0,o.z1-p.z],i=dl.indexOf(Math.min(...dl));if(i===0)p.x=o.x0-PR;else if(i===1)p.x=o.x1+PR;else if(i===2)p.z=o.z0-PR;else p.z=o.z1+PR;}
+        else{p.x=cx+ox/d*PR;p.z=cz+oz/d*PR;}}});
+    stands.forEach(s=>{const q=s.root.position,ox=p.x-q.x,oz=p.z-q.z,d=Math.hypot(ox,oz),m=PR+0.2;if(d<m&&d>1e-6){p.x=q.x+ox/d*m;p.z=q.z+oz/d*m;}});
+  }
+  p.x=clamp(p.x,-10+T/2+PR,8-T/2-PR);p.z=clamp(p.z,-3+T/2+PR,3-T/2-PR);
+}
+function updateWalk(dt){
+  const k=walk.keys;let f=0,s=0;
+  if(k.KeyW||k.ArrowUp)f+=1;if(k.KeyS||k.ArrowDown)f-=1;if(k.KeyD||k.ArrowRight)s+=1;if(k.KeyA||k.ArrowLeft)s-=1;
+  f-=walk.joy.y;s+=walk.joy.x;
+  const len=Math.hypot(f,s);if(len>1){f/=len;s/=len;}
+  const sp=(k.ShiftLeft||k.ShiftRight)?3.0:1.7;
+  const fx=-Math.sin(walk.yaw),fz=-Math.cos(walk.yaw),rx=Math.cos(walk.yaw),rz=-Math.sin(walk.yaw);
+  walk.pos.x+=(fx*f+rx*s)*sp*dt;walk.pos.z+=(fz*f+rz*s)*sp*dt;
+  collide(walk.pos);
+  const mv=Math.min(1,Math.hypot(f,s));walk.bob+=dt*mv*9;
+  camera.position.set(walk.pos.x,1.55+(reduceMotion?0:Math.sin(walk.bob)*0.025*mv),walk.pos.z);
+  camera.rotation.set(walk.pitch,walk.yaw,0,'YXZ');
+}
+function lookYaw(fromX,fromZ,toX,toZ){return Math.atan2(-(toX-fromX),-(toZ-fromZ));}
+function setMode(m){
+  if(m===mode)return;
+  const prev=mode;
+  if(prev==='film')stopFilm();
+  if(m==='walk'){
+    if(prev==='orbit'){camera.getWorldDirection(tmpD);walk.yaw=Math.atan2(-tmpD.x,-tmpD.z);walk.pitch=0;walk.pos.set(camera.position.x,1.55,camera.position.z);}
+    collide(walk.pos);controls.enabled=false;tw=null;canvas.classList.add('walk');
+    $('joy').hidden=!coarse;if(coarse)setFold(true);
+    showToast(t(coarse?'walkTouch':'walkKeys'),'info');
+  }
+  if(m==='orbit'){
+    controls.enabled=true;canvas.classList.remove('walk');$('joy').hidden=true;
+    camera.getWorldDirection(tmpD);
+    const r=roomAt(camera.position.x,camera.position.z)||orbitRoom;orbitRoom=r;
+    controls.target.copy(camera.position).addScaledVector(tmpD,1.4);clampRoom(controls.target,r,0.3);
+    if(camera.position.distanceTo(controls.target)<0.7)camera.position.addScaledVector(tmpD,-0.8);
+  }
+  mode=m;
+  if(m==='film')startFilm();
+  ['orbit','walk','film'].forEach(k=>$('m-'+k).classList.toggle('on',mode===k));
+  refreshPanel();
+}
+$('m-orbit').addEventListener('click',()=>setMode('orbit'));
+$('m-walk').addEventListener('click',()=>setMode('walk'));
+$('m-film').addEventListener('click',()=>setMode('film'));
+
+// joystick (touch walk)
+(function(){const joy=$('joy'),jk=$('jk');let id=null,cx=0,cy=0;
+  joy.addEventListener('pointerdown',e=>{id=e.pointerId;joy.setPointerCapture(id);const r=joy.getBoundingClientRect();cx=r.left+r.width/2;cy=r.top+r.height/2;move(e);e.stopPropagation();});
+  function move(e){if(e.pointerId!==id)return;let dx=e.clientX-cx,dy=e.clientY-cy;const d=Math.hypot(dx,dy),R=40;if(d>R){dx*=R/d;dy*=R/d;}jk.style.transform=`translate(${dx}px,${dy}px)`;walk.joy.x=dx/R;walk.joy.y=dy/R;}
+  joy.addEventListener('pointermove',move);
+  const end=e=>{if(e.pointerId!==id)return;id=null;jk.style.transform='';walk.joy.x=walk.joy.y=0;};
+  joy.addEventListener('pointerup',end);joy.addEventListener('pointercancel',end);})();
+const MOVE_KEYS=['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight'];
+window.addEventListener('keydown',e=>{
+  if(e.code==='Escape'&&mode==='film'){setMode('orbit');return;}
+  if(mode!=='walk'||(e.target&&e.target.tagName==='INPUT'))return;
+  if(MOVE_KEYS.includes(e.code)){walk.keys[e.code]=true;e.preventDefault();}
+});
+window.addEventListener('keyup',e=>{walk.keys[e.code]=false;});
+window.addEventListener('blur',()=>{walk.keys={};});
+
+// film mode: the camera visits every fan in turn, with captions
+let film=null;
+function buildShots(){
+  const shots=[];
+  ROOMS.forEach(room=>{
+    fans.filter(f=>f.room===room).forEach(f=>{
+      const tg=f.fallen?f.body.getWorldPosition(V()):V(f.x,H-0.35-f.rod*0.7,f.z),a=rnd()*Math.PI*2;
+      const r0=f.fallen?1.5:1.7,r1=f.fallen?1.0:1.25;
+      shots.push({p0:clampRoom(V(tg.x+Math.cos(a)*r0,f.fallen?0.9:1.0,tg.z+Math.sin(a)*r0),room,0.3),p1:clampRoom(V(tg.x+Math.cos(a+0.6)*r1,f.fallen?0.6:1.3,tg.z+Math.sin(a+0.6)*r1),room,0.3),t0:tg,t1:tg.clone(),
+        name:()=>t('capFan',f.name),info:()=>f.fallen?t('capFanDown'):t('capFanInfo',Math.round(f.omega*60),(f.amp/D2R).toFixed(1))});});
+    stands.filter(s=>roomAt(s.root.position.x,s.root.position.z)===room).forEach(s=>{
+      const hd=s.windPos.clone(),fd=s.windDir.clone(),side=V(fd.z,0,-fd.x);
+      const tg=s.fallen?s.root.position.clone().add(V(0,0.2,0)):hd;
+      shots.push({p0:clampRoom(hd.clone().addScaledVector(fd,2.0).add(V(0,0.35,0)),room,0.3),p1:clampRoom(hd.clone().addScaledVector(fd,1.1).addScaledVector(side,0.35).add(V(0,0.05,0)),room,0.3),
+        t0:tg.clone().add(V(0,-0.1,0)),t1:tg,name:()=>s.name,info:()=>s.fallen?t('capStandDown'):t('capStandInfo',Math.round(s.omega*60),s.W.toFixed(1))});});
+    if(room.id==='kitchen'){const p=kanki.g.position;
+      shots.push({p0:clampRoom(V(p.x-1.8,1.4,p.z+0.6),room,0.3),p1:clampRoom(V(p.x-1.0,1.7,p.z+0.15),room,0.3),t0:p.clone(),t1:p.clone(),name:()=>t('capKanki'),info:()=>`${Math.round(kanki.omega*60)} rpm`});}
+  });
+  return shots;
+}
+function cut(){const fd=$('fade');fd.style.transition='none';fd.style.opacity='1';requestAnimationFrame(()=>{fd.style.transition='opacity .6s';fd.style.opacity='0';});}
+function startFilm(){
+  film={shots:buildShots(),i:0,t:0};controls.enabled=false;tw=null;
+  document.body.classList.add('filming');$('bars').hidden=false;$('cap').hidden=false;$('filmhint').hidden=false;$('joy').hidden=true;
+  setTimeout(()=>{$('filmhint').hidden=true;},2500);
+  $('cap-name').textContent=film.shots[0].name();cut();
+}
+function stopFilm(){
+  document.body.classList.remove('filming');$('bars').hidden=true;$('cap').hidden=true;$('filmhint').hidden=true;
+  orbitRoom=roomAt(camera.position.x,camera.position.z)||orbitRoom;walk.pos.set(camera.position.x,1.55,camera.position.z);
+  camera.getWorldDirection(tmpD);walk.yaw=Math.atan2(-tmpD.x,-tmpD.z);walk.pitch=0;
+}
+function updateFilm(dt){
+  let sh=film.shots[film.i];film.t+=dt;
+  if(film.t>=5.5){film.i=(film.i+1)%film.shots.length;film.t=0;if(film.i===0)film.shots=buildShots();sh=film.shots[film.i];cut();}
+  const u=clamp(film.t/5.5,0,1),e=u*u*(3-2*u);
+  camera.position.lerpVectors(sh.p0,sh.p1,e);tmpD.lerpVectors(sh.t0,sh.t1,e);camera.lookAt(tmpD);
+  $('cap-name').textContent=sh.name();$('cap-info').textContent=sh.info();
+}
+
+/* ---------- picking & tooltip ---------- */
+const ray=new THREE.Raycaster(),ndc=new THREE.Vector2(),tip=$('tip');
+let downAt=null,lastPt=null,tipTimer=0;
+function pickAt(e){const r=canvas.getBoundingClientRect();ndc.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(ndc,camera);const h=ray.intersectObjects(clickables,false);return h.length?h[0].object:null;}
+function showTip(text,e,ms){const r=canvas.getBoundingClientRect();tip.textContent=text;tip.hidden=false;
+  const x=clamp(e.clientX-r.left,0,r.width-tip.offsetWidth-20),y=clamp(e.clientY-r.top,0,r.height-50);
+  tip.style.left=x+'px';tip.style.top=y+'px';clearTimeout(tipTimer);if(ms)tipTimer=setTimeout(()=>tip.hidden=true,ms);}
+canvas.addEventListener('pointerdown',e=>{if(mode==='film')return;downAt={x:e.clientX,y:e.clientY,id:e.pointerId};lastPt={x:e.clientX,y:e.clientY};tw=null;if(mode==='walk')canvas.setPointerCapture(e.pointerId);});
+canvas.addEventListener('pointermove',e=>{
+  if(mode==='walk'&&downAt&&e.pointerId===downAt.id){const dx=e.clientX-lastPt.x,dy=e.clientY-lastPt.y;lastPt={x:e.clientX,y:e.clientY};walk.yaw-=dx*0.005;walk.pitch=clamp(walk.pitch-dy*0.005,-1.25,1.25);return;}
+  if(downAt||e.pointerType==='touch'||mode==='film')return;
+  const o=pickAt(e);canvas.classList.toggle('hand',!!o);if(o)showTip(o.userData.label(),e);else tip.hidden=true;});
+canvas.addEventListener('pointerleave',()=>{tip.hidden=true;});
+window.addEventListener('pointerup',e=>{
+  if(mode==='film'){if(e.target===canvas)setMode('orbit');return;}
+  if(downAt&&e.pointerId===downAt.id){
+    if(e.target===canvas&&Math.hypot(e.clientX-downAt.x,e.clientY-downAt.y)<6){const o=pickAt(e);if(o){o.userData.act();showTip(o.userData.label(),e,e.pointerType==='touch'?1500:0);refreshPanel();}}
+    downAt=null;}});
+window.addEventListener('pointercancel',()=>{downAt=null;});
+
+/* ---------- camera moves ---------- */
+function curRoom(){return mode==='walk'?(roomAt(walk.pos.x,walk.pos.z)||orbitRoom):orbitRoom;}
+function tweenTo(p,t){
+  const r=roomAt(t[0],t[2]);if(r)orbitRoom=r;
+  tw={t:0,d:reduceMotion?0.001:1.0,p0:camera.position.clone(),t0:controls.target.clone(),p1:V(...p),t1:V(...t)};
+}
+function fanCam(f){const tg=f.fallen?f.body.getWorldPosition(V()):V(f.x,H-0.4-f.rod*0.6,f.z);const p=clampRoom(f.fallen?V(f.x+1.0,1.0,f.z+1.1):V(f.x+1.2,1.35,f.z+1.3),f.room,0.3);return[p.toArray(),tg.toArray()];}
+function goCam(k){
+  if(mode!=='orbit')setMode('orbit');
+  const c=k==='c'?fanCam(fans[csel]):k==='s'?stands[sel].cam:curRoom().cam;
+  tweenTo(c[0],c[1]);
+}
+function goRoom(r){
+  if(mode==='walk'){walk.pos.set(r.cam[0][0],1.55,r.cam[0][2]);collide(walk.pos);walk.yaw=lookYaw(walk.pos.x,walk.pos.z,r.cam[1][0],r.cam[1][2]);walk.pitch=-0.05;}
+  else{if(mode==='film')setMode('orbit');tweenTo(r.cam[0],r.cam[1]);}
+  refreshPanel();
+}
+function clampOrbit(){
+  const r=orbitRoom;clampRoom(controls.target,r,0.3);controls.target.y=clamp(controls.target.y,0.3,2.4);clampRoom(camera.position,r,0.15);
+}
+
+/* ---------- panel ---------- */
+const chip=(id,text,on)=>{const c=$(id);c.textContent=text;c.classList.toggle('on',on);};
+const ACTS={
+  cSpeed:()=>fans[csel].speedChain.fire(),cLight:()=>{const f=fans[csel];if(f.lightChain)f.lightChain.fire();},cPower:()=>{const f=fans[csel];if(f.press)f.press();},cReset:()=>resetFan(fans[csel]),
+  k0:()=>stands[sel].setSpeed(0),k1:()=>stands[sel].setSpeed(1),k2:()=>stands[sel].setSpeed(2),k3:()=>stands[sel].setSpeed(3),osc:()=>stands[sel].toggleOsc(),
+  allOn:()=>{sfx('key');stands.forEach(t=>{t.speed=3;t.osc=true;});},allOff:()=>{sfx('key');stands.forEach(t=>{t.speed=0;t.offT=0.22;});},
+  raise:()=>raise(stands[sel]),raiseAll:()=>stands.forEach(raise),
+  light:()=>curRoom().press(),kanki:()=>kanki.chain.fire(),marks:()=>{marksOn=!marksOn;}};
+document.querySelectorAll('[data-act]').forEach(b=>b.addEventListener('click',()=>{ACTS[b.dataset.act]();refreshPanel();}));
+document.querySelectorAll('[data-cam]').forEach(b=>b.addEventListener('click',()=>goCam(b.dataset.cam)));
+fans.forEach((t,i)=>{const b=document.createElement('button');b.type='button';b.className='tab';b.textContent=t.short;b.setAttribute('aria-pressed','false');b.addEventListener('click',()=>selectFan(i));$('c-tabs').appendChild(b);t.tab=b;});
+stands.forEach((t,i)=>{const b=document.createElement('button');b.type='button';b.className='tab';b.textContent=t.short;b.setAttribute('aria-pressed','false');b.addEventListener('click',()=>selectStand(i));$('s-tabs').appendChild(b);t.tab=b;});
+ROOMS.forEach(r=>{const b=document.createElement('button');b.type='button';b.textContent=r.name;b.dataset.room=r.id;b.addEventListener('click',()=>goRoom(r));$('room-btns').appendChild(b);r.btn=b;});
+$('c-imb').addEventListener('input',e=>{fans[csel].imb=e.target.value/100;});
+$('s-imb').addEventListener('input',e=>{stands[sel].imb=e.target.value/100;});
+function showSec(k){document.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('cur',b.dataset.sec===k));document.querySelectorAll('section.dev').forEach(d=>d.classList.toggle('cur',d.dataset.sec===k));}
+document.querySelectorAll('.seg button').forEach(b=>b.addEventListener('click',()=>showSec(b.dataset.sec)));
+showSec('s');
+const fold=$('fold');
+function setFold(f){$('pbody').hidden=f;fold.setAttribute('aria-expanded',String(!f));fold.textContent=t(f?'unfold':'fold');}
+fold.addEventListener('click',()=>setFold(!$('pbody').hidden));
+if(window.innerWidth<640||window.innerHeight<500)setFold(true);
+let toastT=0;
+function showToast(t,kind){const el=$('toast');el.textContent=t;el.className=kind==='info'?'info':'';el.hidden=false;clearTimeout(toastT);toastT=setTimeout(()=>{el.hidden=true;},kind==='info'?4500:3200);}
+function refreshPanel(){
+  const f=fans[csel];
+  chip('c-chip',f.fallen?t('stopped'):(f.power?SP(f.speed):t('powerOff')),!f.fallen&&f.power&&f.speed>0);
+  if(f.lamp){$('c-light').hidden=false;chip('c-light',t(f.lamp.on?'lampOn':'lampOff'),f.lamp.on&&f.power&&!f.cut);}else $('c-light').hidden=true;
+  $('c-fall').hidden=!f.fallen;
+  const ta=f.amp/D2R;
+  $('c-name').textContent=f.name;$('c-rpm').textContent=Math.round(f.omega*60);$('c-tilt').textContent=f.fallen?'—':ta.toFixed(1);
+  const cb=$('c-bar');cb.style.width=(f.fallen?0:Math.min(100,ta/8*100))+'%';cb.classList.toggle('hot',ta>FAN_LINE*0.8);
+  if(document.activeElement!==$('c-imb'))$('c-imb').value=Math.round(f.imb*100);$('c-imb-out').textContent=Math.round(f.imb*100)+'%';
+  $('c-lightbtn').disabled=!f.lightChain||f.fallen;$('c-powbtn').disabled=!f.press;$('c-reset').disabled=!f.fallen;
+  fans.forEach((t,i)=>{t.tab.textContent=t.short;t.tab.setAttribute('aria-pressed',String(i===csel));t.tab.classList.toggle('run',t.omega>0.3&&!t.fallen);t.tab.classList.toggle('down',t.fallen);});
+  const st=stands[sel];
+  chip('s-chip',SP(st.speed),st.speed>0);chip('o-chip',st.osc?st.oscName:t(st.kind==='box'?'louverStop':'fixed'),st.osc);
+  $('s-name').textContent=st.name;$('s-rpm').textContent=Math.round(st.omega*60);$('osc-btn').textContent=st.oscName;
+  stands.forEach((t,i)=>{t.tab.textContent=t.short;t.tab.setAttribute('aria-pressed',String(i===sel));t.tab.classList.toggle('run',t.omega>1);t.tab.classList.toggle('down',t.fallen);});
+  document.querySelectorAll('[data-act^="k"]').forEach(b=>{if(b.dataset.act.length===2)b.classList.toggle('on',+b.dataset.act[1]===st.speed);});
+  $('osc-btn').classList.toggle('on',st.osc);
+  $('s-w').textContent=st.W.toFixed(1);const sb=$('s-bar');sb.style.width=Math.min(100,st.W/4.5*100)+'%';sb.classList.toggle('hot',st.W>WFALL*0.8);
+  $('f-chip').hidden=!st.fallen;$('raise-btn').disabled=!st.fallen||st.phase==='raising';
+  if(document.activeElement!==$('s-imb'))$('s-imb').value=Math.round(st.imb*100);$('s-imb-out').textContent=Math.round(st.imb*100)+'%';
+  const r=curRoom();
+  $('w-name').textContent=r.name;chip('w-light',t('roomLight',r.on),r.on);chip('k-chip',t('kankiChip',kanki.speed),kanki.speed>0);
+  ROOMS.forEach(x=>{x.btn.classList.toggle('on',x===r);x.btn.textContent=x.name;});
+  $('light-btn').classList.toggle('on',r.on);$('marks-btn').classList.toggle('on',marksOn);
+  $('roomtag').textContent=r.name;
+}
+
+/* ---------- main loop ---------- */
+let last=performance.now(),panelT=0;
+function frame(now){
+  const dt=Math.min(0.05,Math.max(0.001,(now-last)/1000));last=now;NOW=now/1000;
+  if(mode==='film')updateFilm(dt);
+  else if(mode==='walk')updateWalk(dt);
+  else{
+    if(tw){tw.t+=dt;const u=Math.min(1,tw.t/tw.d),e=u<0.5?2*u*u:1-Math.pow(-2*u+2,2)/2;camera.position.lerpVectors(tw.p0,tw.p1,e);controls.target.lerpVectors(tw.t0,tw.t1,e);if(u>=1)tw=null;}
+    controls.update();if(!tw)clampOrbit();
+  }
+  fans.forEach(f=>updateFan(f,dt));stands.forEach(s=>s.update(dt,NOW));updateKanki(dt);updateSwitches();
+  chains.forEach(c=>updateChain(c,dt,NOW));updateCurtains(dt,NOW);updateMarkers(NOW);updateLights();
+  updateAudio();
+  panelT-=dt;if(panelT<=0){panelT=0.1;refreshPanel();}
+  renderer.render(scene,camera);
+  requestAnimationFrame(frame);
+}
+function setLang(l){LANG=l;try{localStorage.setItem('wfh-lang',l);}catch(e){}applyStatic();setFold($('pbody').hidden);
+  if(film&&film.shots[film.i])$('cap-name').textContent=film.shots[film.i].name();refreshPanel();}
+$('lang').addEventListener('click',()=>setLang(LANG==='ja'?'en':'ja'));
+applyStatic();setFold($('pbody').hidden);
+refreshPanel();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
